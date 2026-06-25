@@ -1,0 +1,7 @@
+venv/
+models/*.gguf
+data/*.db
+__pycache__/
+*.pyc
+.env
+config/settings.json
