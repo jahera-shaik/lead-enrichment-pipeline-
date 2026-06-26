@@ -27,6 +27,7 @@ def generate(prompt: str, system: str = "", max_tokens: int = 512,
         messages=messages,
         max_tokens=max_tokens,
         temperature=temperature,
+        repeat_penalty=1.3,
     )
     return out["choices"][0]["message"]["content"].strip()
 
