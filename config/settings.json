@@ -1,0 +1,23 @@
+{
+  "icp": {
+    "target_industries": ["healthcare", "eye care", "ophthalmology", "hospitals", "medical devices", "diagnostics", "telemedicine"],
+    "company_size_range": "20 to 5000 employees",
+    "target_tech_indicators": ["patient management", "EHR", "cloud", "digital health", "automation", "AI"],
+    "min_seniority": "Manager or above (Director, Head, VP, C-level preferred)",
+    "target_geographies": ["India"],
+    "disqualifiers": {
+      "industries_to_exclude": ["tobacco", "gambling"],
+      "competitor_names": []
+    }
+  },
+  "scoring": {
+    "weight_icp_fit": 0.7,
+    "weight_buying_signals": 0.3,
+    "qualification_threshold": 50
+  },
+  "product": {
+    "name": "Alfaleus Vision Diagnostics Platform",
+    "description": "AI-powered eye-care diagnostic technology that makes early detection of vision disorders accessible and affordable for hospitals and clinics.",
+    "value_proposition": "Helps eye-care providers screen more patients faster with portable, AI-assisted diagnostics — expanding reach while reducing cost per screening."
+  }
+}
