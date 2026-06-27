@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Alfaleus Lead Intelligence</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#F1F5F9; --card:#FFFFFF; --border:#E2E8F0; --text:#0F172A;
+    --muted:#64748B; --indigo:#4F46E5; --indigo-soft:#EEF2FF;
+    --sidebar:#1E293B; --sidebar-hover:#334155; --sidebar-text:#94A3B8;
+    --red:#EF4444; --amber:#F59E0B; --green:#10B981;
+    --sig-bg:#E0E7FF; --sig-text:#3730A3;
+    --shadow:0 1px 3px rgba(15,23,42,.08),0 1px 2px rgba(15,23,42,.04);
+    --shadow-lg:0 4px 12px rgba(15,23,42,.08);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{font-size:16px}
+  body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);display:flex;min-height:100vh}
+
+  /* sidebar */
+  .sidebar{width:230px;background:var(--sidebar);color:#fff;padding:22px 16px;position:fixed;height:100vh;display:flex;flex-direction:column}
+  .brand{display:flex;align-items:center;gap:11px;padding:0 8px 22px;border-bottom:1px solid rgba(255,255,255,.08);margin-bottom:16px}
+  .brand .logo{width:36px;height:36px;border-radius:9px;background:var(--indigo);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700}
+  .brand .name{font-size:15px;font-weight:700;line-height:1.2}
+  .brand .sub{font-size:11px;color:var(--sidebar-text);font-weight:500}
+  .nav-item{display:flex;align-items:center;gap:11px;padding:11px 12px;border-radius:9px;color:var(--sidebar-text);font-size:14px;font-weight:500;cursor:pointer;margin-bottom:3px;transition:all .15s}
+  .nav-item:hover{background:var(--sidebar-hover);color:#fff}
+  .nav-item.active{background:var(--indigo);color:#fff}
+  .nav-item .ic{width:18px;text-align:center}
+
+  /* main */
+  .main{margin-left:230px;flex:1;padding:32px 48px;width:calc(100% - 230px)}
+  .main-inner{max-width:1180px;margin:0 auto}
+  .page-head{margin-bottom:24px}
+  .page-head h1{font-size:24px;font-weight:700;letter-spacing:-.02em}
+  .page-head p{color:var(--muted);font-size:14px;margin-top:3px}
+
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:22px;margin-bottom:18px;box-shadow:var(--shadow)}
+  .card h2{font-size:16px;font-weight:600;margin-bottom:16px}
+  .card-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+  .card-head h2{margin:0}
+
+  table{width:100%;border-collapse:collapse}
+  thead th{text-align:left;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;padding:0 14px 12px}
+  tbody td{padding:15px 14px;border-top:1px solid var(--border);vertical-align:middle;font-size:14px}
+  tbody tr{cursor:pointer;transition:background .12s}
+  tbody tr:hover{background:#F8FAFC}
+  .company-cell{font-weight:600}
+  .company-cell .sub{font-weight:400;color:var(--muted);font-size:12px;margin-top:2px}
+
+  .score-wrap{display:flex;align-items:center;gap:10px;width:130px}
+  .score-bar{flex:1;height:7px;border-radius:99px;background:#F1F5F9;overflow:hidden}
+  .score-fill{height:100%;border-radius:99px;transition:width .4s}
+  .score-num{font-weight:700;font-size:14px;width:26px;text-align:right}
+
+  .badge{display:inline-block;background:var(--sig-bg);color:var(--sig-text);font-size:12px;font-weight:600;padding:4px 11px;border-radius:99px}
+  .pill{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:500;padding:4px 10px;border-radius:99px}
+  .pill .dot{width:7px;height:7px;border-radius:99px}
+  .pill.green{background:#ECFDF5;color:#047857}.pill.green .dot{background:var(--green)}
+  .pill.amber{background:#FFFBEB;color:#B45309}.pill.amber .dot{background:var(--amber)}
+  .pill.gray{background:#F1F5F9;color:#64748B}.pill.gray .dot{background:#94A3B8}
+
+  .btn{background:var(--indigo);color:#fff;border:none;font-family:inherit;font-size:14px;font-weight:600;padding:10px 18px;border-radius:9px;cursor:pointer;transition:background .15s}
+  .btn:hover{background:#4338CA}
+  .btn.ghost{background:#fff;color:var(--text);border:1px solid var(--border)}
+  .btn.ghost:hover{background:#F8FAFC}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+
+  input,textarea{font-family:inherit;font-size:14px;width:100%;padding:11px 13px;border:1px solid var(--border);border-radius:9px;background:#fff;color:var(--text)}
+  input:focus,textarea:focus{outline:none;border-color:var(--indigo);box-shadow:0 0 0 3px var(--indigo-soft)}
+  label{display:block;font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px;margin-top:14px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+
+  .detail-split{display:grid;grid-template-columns:300px 1fr;gap:18px;align-items:start}
+  .kv{margin-bottom:14px}.kv .k{font-size:12px;color:var(--muted);font-weight:500}.kv .v{font-weight:600;margin-top:2px}
+  .crit{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid #F1F5F9;font-size:14px}
+  .crit:last-child{border-bottom:none}
+
+  .email-card{background:#0F172A;color:#E2E8F0;border-radius:11px;padding:18px;font-family:ui-monospace,Menlo,monospace;font-size:13px;white-space:pre-wrap;position:relative;margin-top:10px;line-height:1.6}
+  .copy-btn{position:absolute;top:12px;right:12px;background:#1E293B;border:1px solid #334155;color:#94A3B8;font-size:12px;font-weight:600;padding:6px 12px;border-radius:7px;cursor:pointer}
+  .copy-btn:hover{color:#fff;border-color:#475569}
+
+  .metrics{display:flex;gap:30px;margin-bottom:8px}
+  .metric .ml{font-size:12px;color:var(--muted);font-weight:500}
+  .metric .mv{font-size:26px;font-weight:700;margin-top:2px}
+
+  .muted{color:var(--muted)}
+  .spin{display:inline-block;width:16px;height:16px;border:2px solid #CBD5E1;border-top-color:var(--indigo);border-radius:99px;animation:s .7s linear infinite;vertical-align:middle}
+  @keyframes s{to{transform:rotate(360deg)}}
+  .hidden{display:none}
+  .chip{display:inline-block;padding:6px 13px;background:var(--indigo-soft);color:var(--indigo);border-radius:99px;margin:3px;font-size:13px;font-weight:500}
+  .empty{text-align:center;padding:54px;color:var(--muted)}
+  code{background:#F1F5F9;padding:2px 6px;border-radius:5px;font-size:13px}
+</style>
+</head>
+<body>
+
+<div class="sidebar">
+  <div class="brand">
+    <div class="logo">◎</div>
+    <div><div class="name">Alfaleus</div><div class="sub">Lead Intelligence</div></div>
+  </div>
+  <div class="nav-item active" data-tab="dashboard"><span class="ic">▦</span> Dashboard</div>
+  <div class="nav-item" data-tab="enrich"><span class="ic">＋</span> Add Lead</div>
+  <div class="nav-item" data-tab="detail"><span class="ic">◳</span> Lead Detail</div>
+  <div class="nav-item" data-tab="icp"><span class="ic">⚙</span> ICP Config</div>
+  <div style="margin-top:auto;font-size:11px;color:var(--sidebar-text);padding:0 8px">Local LLM · CPU-bound</div>
+</div>
+
+
+<div class="main"><div class="main-inner">
+  <!-- DASHBOARD -->
+  <div id="tab-dashboard">
+    <div class="page-head"><h1>Lead Dashboard</h1><p>Qualified leads ranked by ICP fit — highest first.</p></div>
+    <div class="card">
+      <div class="card-head"><h2>All Leads <span class="muted" id="lead-count"></span></h2>
+        <button class="btn ghost" onclick="loadLeads()">↻ Refresh</button></div>
+      <div id="leads-table"></div>
+    </div>
+  </div>
+
+  <!-- ENRICH -->
+  <div id="tab-enrich" class="hidden">
+    <div class="page-head"><h1>Add a Lead</h1><p>Enrich a single lead or upload a CSV batch.</p></div>
+    <div class="card">
+      <h2>Single lead</h2>
+      <div class="grid2">
+        <div><label>Contact name</label><input id="f-name" placeholder="Dr. Sangita Reddy"></div>
+        <div><label>Company</label><input id="f-company" value="Apollo Hospitals"></div>
+        <div><label>Website</label><input id="f-website" value="https://www.apollohospitals.com"></div>
+        <div><label>Email</label><input id="f-email" placeholder="optional"></div>
+      </div>
+      <div style="margin-top:18px"><button class="btn" id="enrich-btn" onclick="enrichLead()">Enrich Lead</button> <span id="enrich-status" class="muted" style="margin-left:10px"></span></div>
+      <div id="enrich-result"></div>
+    </div>
+    <div class="card">
+      <h2>Bulk upload (CSV)</h2>
+      <p class="muted" style="margin-bottom:12px">Columns: name, company, website, email (any subset).</p>
+      <input type="file" id="csv-file" accept=".csv">
+      <div id="csv-preview"></div>
+      <div style="margin-top:14px"><button class="btn ghost" onclick="uploadCsv()">Enrich all rows</button> <span id="csv-status" class="muted" style="margin-left:10px"></span></div>
+    </div>
+  </div>
+
+  <!-- DETAIL -->
+  <div id="tab-detail" class="hidden">
+    <div class="page-head"><h1>Lead Detail</h1><p>Full enriched profile, signals, and outreach drafts.</p></div>
+    <div class="card">
+      <div style="display:flex;gap:12px;align-items:flex-end">
+        <div><label style="margin-top:0">Lead ID</label><input id="detail-id" type="number" value="1" style="width:130px"></div>
+        <button class="btn" onclick="loadDetail()">Load</button>
+      </div>
+    </div>
+    <div id="detail-body"></div>
+  </div>
+
+  <!-- ICP -->
+  <div id="tab-icp" class="hidden">
+    <div class="page-head"><h1>ICP Configuration</h1><p>Your ideal customer profile and scoring weights.</p></div>
+    <div class="card"><h2>Current ICP</h2>
+      <p class="muted">Editable in <code>config/settings.json</code> — no code changes needed.</p>
+      <div id="icp-body" style="margin-top:16px"></div>
+    </div>
+  </div>
+
+</div></div>
+
+<script>
+const API = window.location.origin;
+
+document.querySelectorAll('.nav-item').forEach(b=>{
+  b.onclick=()=>{
+    document.querySelectorAll('.nav-item').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    document.querySelectorAll('[id^=tab-]').forEach(t=>t.classList.add('hidden'));
+    document.getElementById('tab-'+b.dataset.tab).classList.remove('hidden');
+    if(b.dataset.tab==='dashboard') loadLeads();
+    if(b.dataset.tab==='icp') loadIcp();
+  };
+});
+
+function scoreColor(s){ if(s==null) return '#CBD5E1'; if(s>=70) return 'var(--green)'; if(s>=31) return 'var(--amber)'; return 'var(--red)'; }
+function scoreBar(s){const v=s==null?0:s;return `<div class="score-wrap"><div class="score-bar"><div class="score-fill" style="width:${v}%;background:${scoreColor(s)}"></div></div><span class="score-num">${s==null?'—':Math.round(s)}</span></div>`;}
+function syncPill(st){const map={synced:'green',updated:'green',pending:'gray',failed:'amber'};const c=map[st]||'gray';return `<span class="pill ${c}"><span class="dot"></span>${st||'pending'}</span>`;}
+function enrichPill(st){const c=st==='enriched'?'green':(st==='partial'?'amber':'gray');return `<span class="pill ${c}"><span class="dot"></span>${st||'—'}</span>`;}
+
+async function loadLeads(){
+  const el=document.getElementById('leads-table');
+  el.innerHTML='<div class="empty"><span class="spin"></span> Loading…</div>';
+  try{
+    const r=await fetch(API+'/leads'); const data=await r.json();
+    const leads=(data.leads||[]).sort((a,b)=>(b.icp_score||0)-(a.icp_score||0));
+    document.getElementById('lead-count').textContent='· '+leads.length;
+    if(!leads.length){el.innerHTML='<div class="empty">No leads yet. Add one in “Add Lead”.</div>';return;}
+    let html='<table><thead><tr><th>Company</th><th>ICP Score</th><th>Top Buying Signal</th><th>Enrichment</th><th>CRM</th></tr></thead><tbody>';
+    leads.forEach(l=>{
+      const sig=(l.buying_signals&&l.buying_signals[0])?l.buying_signals[0].signal:null;
+      html+=`<tr onclick="openDetail(${l.id})">
+        <td><div class="company-cell">${l.company||'—'}<div class="sub">${l.name||'No contact'}</div></div></td>
+        <td>${scoreBar(l.icp_score)}</td>
+        <td>${sig?`<span class="badge">${sig.slice(0,46)}${sig.length>46?'…':''}</span>`:'<span class=muted>—</span>'}</td>
+        <td>${enrichPill(l.enrich_status)}</td>
+        <td>${syncPill(l.sync_status)}</td>
+      </tr>`;
+    });
+    html+='</tbody></table>';
+    el.innerHTML=html;
+  }catch(e){el.innerHTML='<div class="empty">Could not load leads. Is the backend running?</div>';}
+}
+function openDetail(id){document.querySelector('[data-tab=detail]').click();document.getElementById('detail-id').value=id;loadDetail();}
+
+async function enrichLead(){
+  const btn=document.getElementById('enrich-btn'),st=document.getElementById('enrich-status'),res=document.getElementById('enrich-result');
+  btn.disabled=true; st.innerHTML='<span class="spin"></span> Running pipeline (~30s)…'; res.innerHTML='';
+  try{
+    const body={
+      name:document.getElementById('f-name').value,
+      company:document.getElementById('f-company').value,
+      website:document.getElementById('f-website').value,
+      email:document.getElementById('f-email').value
+    };
+    const r=await fetch(API+'/enrich',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d=await r.json();
+    if(!r.ok){st.textContent='Error: '+(d.detail||'failed');btn.disabled=false;return;}
+    st.textContent='';
+    const emails=d.emails.map(e=>`<div style="margin-top:12px"><strong>${e.tone} — ${e.subject}</strong><div class="email-card">${e.body}<button class="copy-btn" onclick="navigator.clipboard.writeText(this.parentElement.textContent.replace('Copy',''))">Copy</button></div></div>`).join('');
+    res.innerHTML=`<div class="card" style="margin-top:18px">
+      <div class="metrics"><div class="metric"><div class="ml">ICP Score</div><div class="mv">${d.icp_score}</div></div>
+      <div class="metric"><div class="ml">Combined</div><div class="mv">${d.combined_score}</div></div>
+      <div class="metric"><div class="ml">Qualified</div><div class="mv" style="color:${d.qualified?'var(--green)':'var(--red)'}">${d.qualified?'Yes':'No'}</div></div></div>
+      ${d.top_signal?`<div style="margin:10px 0"><span class="badge">${d.top_signal}</span></div>`:''}
+      <h2 style="margin-top:14px">Email drafts</h2>${emails}</div>`;
+    loadLeads();
+  }catch(e){st.textContent='Request failed: '+e;}
+  btn.disabled=false;
+}
+
+document.getElementById('csv-file').addEventListener('change',function(){
+  const f=this.files[0]; if(!f)return; const rd=new FileReader();
+  rd.onload=()=>{const rows=rd.result.split('\n').slice(0,6).map(r=>r.split(','));
+    let h='<table style="margin-top:12px"><tbody>'+rows.map(r=>'<tr>'+r.map(c=>`<td style="padding:8px 14px">${c}</td>`).join('')+'</tr>').join('')+'</tbody></table>';
+    document.getElementById('csv-preview').innerHTML='<p class="muted" style="margin-top:12px">Preview:</p>'+h;};
+  rd.readAsText(f);
+});
+async function uploadCsv(){
+  const f=document.getElementById('csv-file').files[0],st=document.getElementById('csv-status');
+  if(!f){st.textContent='Choose a CSV first.';return;}
+  st.innerHTML='<span class="spin"></span> Enriching…';
+  const fd=new FormData();fd.append('file',f);
+  try{const r=await fetch(API+'/upload-csv',{method:'POST',body:fd});const d=await r.json();st.textContent=`Processed ${d.processed} leads.`;loadLeads();}
+  catch(e){st.textContent='Failed: '+e;}
+}
+
+async function loadDetail(){
+  const id=document.getElementById('detail-id').value,body=document.getElementById('detail-body');
+  body.innerHTML='<div class="card"><span class="spin"></span> Loading…</div>';
+  try{
+    const r=await fetch(API+'/lead/'+id);const l=await r.json();
+    if(!r.ok){body.innerHTML='<div class="card empty">Lead not found.</div>';return;}
+    const fields=(l.profile&&l.profile.fields)||{};
+    const fieldRows=Object.entries(fields).map(([k,f])=>`<div class="crit"><span class="muted">${k}</span><span style="text-align:right">${Array.isArray(f.value)?f.value.join(', '):f.value} <span class="badge" style="margin-left:6px">${f.confidence}</span></span></div>`).join('')||'<span class="muted">No fields.</span>';
+    const sigs=(l.buying_signals||[]).map(s=>`<div class="crit"><span class="badge">${s.strength}</span><span style="flex:1;margin-left:12px">${s.signal}</span></div>`).join('')||'<span class="muted">None detected.</span>';
+    const emails=(l.emails||[]).map(e=>`<div style="margin-top:12px"><strong>${e.tone} — ${e.subject}</strong><div class="email-card">${e.body}<button class="copy-btn" onclick="navigator.clipboard.writeText(this.parentElement.textContent.replace('Copy',''))">Copy</button></div></div>`).join('');
+    body.innerHTML=`<div class="detail-split">
+      <div class="card">
+        <h2>${l.company||''}</h2>
+        <div class="kv"><div class="k">Contact</div><div class="v">${l.name||'—'}</div></div>
+        <div class="kv"><div class="k">Domain</div><div class="v">${l.company_domain||'—'}</div></div>
+        <div class="kv"><div class="k">ICP Score</div><div class="v">${l.icp_score??'—'}</div></div>
+        <div class="kv"><div class="k">Enrichment</div><div class="v">${enrichPill(l.enrich_status)}</div></div>
+        <div class="kv"><div class="k">CRM Sync</div><div class="v">${syncPill(l.sync_status)}</div></div>
+        <button class="btn" style="margin-top:16px;width:100%" onclick="syncLead(${l.id})">Sync to Notion</button>
+        <div id="sync-msg" class="muted" style="margin-top:10px"></div>
+      </div>
+      <div>
+        <div class="card"><h2>Enriched profile</h2>${fieldRows}</div>
+        <div class="card"><h2>Buying signals</h2>${sigs}</div>
+        <div class="card"><h2>Outreach drafts</h2>${emails}</div>
+      </div>
+    </div>`;
+  }catch(e){body.innerHTML='<div class="card empty">Error loading lead.</div>';}
+}
+async function syncLead(id){
+  const m=document.getElementById('sync-msg');m.innerHTML='<span class="spin"></span> Syncing…';
+  try{const r=await fetch(API+'/sync/'+id,{method:'POST'});const d=await r.json();m.textContent='Status: '+d.status;loadLeads();}
+  catch(e){m.textContent='Sync failed.';}
+}
+
+async function loadIcp(){
+  const b=document.getElementById('icp-body');
+  try{const r=await fetch(API+'/icp');const c=await r.json();
+    const ind=(c.icp.target_industries||[]).map(i=>`<span class="chip">${i}</span>`).join('');
+    b.innerHTML=`<label style="margin-top:0">Target industries</label><div>${ind}</div>
+      <label>Company size</label><input value="${c.icp.company_size_range||''}" readonly>
+      <label>Min seniority</label><input value="${c.icp.min_seniority||''}" readonly>
+      <div class="grid2"><div><label>Weight: ICP fit</label><input value="${c.scoring.weight_icp_fit}" readonly></div>
+      <div><label>Weight: signals</label><input value="${c.scoring.weight_buying_signals}" readonly></div></div>
+      <label>Qualification threshold</label><input value="${c.scoring.qualification_threshold}" readonly>
+      <label>Product</label><input value="${c.product.name}" readonly>`;
+  }catch(e){b.innerHTML='<span class="muted">Could not load ICP.</span>';}
+}
+loadLeads();
+</script>
+</body>
+</html>
