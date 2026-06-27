@@ -9,7 +9,7 @@ def get_model():
     if _MODEL is None:
         _MODEL = Llama(
             model_path=MODEL_PATH,
-            n_ctx=4096,
+            n_ctx=2048,
             n_threads=os.cpu_count(),
             n_gpu_layers=0,
             verbose=False,

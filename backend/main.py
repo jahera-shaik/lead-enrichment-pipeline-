@@ -4,9 +4,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import csv
 import io
+import time
 
 from services.enrichment import enrich_lead
 from services.icp import qualify_lead, load_config
@@ -19,19 +21,12 @@ app = FastAPI(title="Lead Enrichment Pipeline")
 # CORS — needed so the Chrome extension (different origin) can call this API
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],          # tighten in production; fine for assignment
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-from fastapi.responses import FileResponse
-import os as _os
-
-FRONTEND_DIR = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))), "frontend")
-
-@app.get("/app")
-def serve_frontend():
-    return FileResponse(_os.path.join(FRONTEND_DIR, "index.html"))
+FRONTEND_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend")
 
 init_db()
 
@@ -45,9 +40,17 @@ class LeadInput(BaseModel):
 
 def run_pipeline(name="", company="", website="", email="") -> dict:
     """The full pipeline: enrich -> qualify -> emails -> store. Returns the lead record."""
+    t0 = time.time()
     profile = enrich_lead(name=name, company=company, website=website, email=email)
+    print(f"[TIMING] enrich: {time.time()-t0:.1f}s")
+
+    t1 = time.time()
     qual = qualify_lead(profile)
+    print(f"[TIMING] qualify: {time.time()-t1:.1f}s")
+
+    t2 = time.time()
     emails = generate_outreach(profile, qual)
+    print(f"[TIMING] emails: {time.time()-t2:.1f}s")
 
     lead_record = {
         "name": name,
@@ -72,6 +75,11 @@ def run_pipeline(name="", company="", website="", email="") -> dict:
 @app.get("/")
 def health():
     return {"status": "ok", "service": "lead-enrichment-pipeline"}
+
+
+@app.get("/app")
+def serve_frontend():
+    return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
 
 
 @app.post("/enrich")

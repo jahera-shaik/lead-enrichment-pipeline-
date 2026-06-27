@@ -3,13 +3,15 @@ import requests
 import feedparser
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
+import socket
+socket.setdefaulttimeout(8)
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                   "AppleWebKit/537.36 (KHTML, like Gecko) "
                   "Chrome/120.0 Safari/537.36"
 }
-TIMEOUT = 12
+TIMEOUT = 6
 
 
 def _clean(text: str) -> str:
@@ -44,7 +46,7 @@ def scrape_website(url: str) -> dict:
     }
 
     try:
-        resp = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
+        resp = requests.get(url, headers=HEADERS, timeout=(4,5))
         resp.raise_for_status()
         soup = BeautifulSoup(resp.text, "html.parser")
 
@@ -82,9 +84,9 @@ def scrape_website(url: str) -> dict:
                 if w in href and w not in links:
                     links[w] = urljoin(url, a["href"])
 
-        for w, link in list(links.items())[:4]:  # cap to 4 to stay fast
+        for w, link in list(links.items())[:2]:  # cap to 4 to stay fast
             try:
-                r2 = requests.get(link, headers=HEADERS, timeout=TIMEOUT)
+                r2 = requests.get(link, headers=HEADERS, timeout=(4,5))
                 if r2.ok:
                     s2 = BeautifulSoup(r2.text, "html.parser")
                     for tag in s2(["script", "style", "noscript"]):
