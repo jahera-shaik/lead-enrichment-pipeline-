@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "Alfaleus Lead Intelligence",
+  "version": "1.0",
+  "description": "Enrich any LinkedIn profile or company website as a sales lead.",
+  "permissions": ["activeTab", "scripting"],
+  "host_permissions": ["http://127.0.0.1:8000/*", "https://*.linkedin.com/*"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Enrich this lead"
+  }
+}

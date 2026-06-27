@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  body{font-family:'Segoe UI',system-ui,sans-serif;width:340px;margin:0;background:#F1F5F9;color:#0F172A}
+  .head{background:#1E293B;color:#fff;padding:14px 16px;display:flex;align-items:center;gap:10px}
+  .logo{width:26px;height:26px;border-radius:7px;background:#4F46E5;display:flex;align-items:center;justify-content:center;font-weight:700}
+  .head .t{font-size:14px;font-weight:700}
+  .head .s{font-size:11px;color:#94A3B8}
+  .body{padding:16px}
+  label{display:block;font-size:12px;font-weight:600;color:#64748B;margin:10px 0 4px}
+  input{width:100%;padding:8px 10px;border:1px solid #E2E8F0;border-radius:7px;font-size:13px;box-sizing:border-box}
+  button{width:100%;margin-top:14px;padding:10px;background:#4F46E5;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer}
+  button:hover{background:#4338CA}
+  button:disabled{opacity:.6;cursor:not-allowed}
+  .result{margin-top:14px;background:#fff;border:1px solid #E2E8F0;border-radius:10px;padding:14px;display:none}
+  .metric{display:flex;justify-content:space-between;padding:5px 0;font-size:13px}
+  .metric b{font-size:15px}
+  .badge{display:inline-block;background:#E0E7FF;color:#3730A3;font-size:12px;font-weight:600;padding:3px 9px;border-radius:99px;margin-top:8px}
+  .status{font-size:12px;color:#64748B;margin-top:8px;text-align:center}
+  .spin{display:inline-block;width:14px;height:14px;border:2px solid #CBD5E1;border-top-color:#4F46E5;border-radius:99px;animation:s .7s linear infinite;vertical-align:middle}
+  @keyframes s{to{transform:rotate(360deg)}}
+  .qual-yes{color:#10B981;font-weight:700}.qual-no{color:#EF4444;font-weight:700}
+</style>
+</head>
+<body>
+<div class="head">
+  <div class="logo">◎</div>
+  <div><div class="t">Alfaleus</div><div class="s">Lead Intelligence</div></div>
+</div>
+<div class="body">
+  <label>Name</label><input id="name" placeholder="—">
+  <label>Company</label><input id="company" placeholder="—">
+  <label>Website / Profile URL</label><input id="website" placeholder="—">
+  <button id="enrich">Enrich Lead</button>
+  <div class="status" id="status"></div>
+  <div class="result" id="result"></div>
+</div>
+<script src="popup.js"></script>
+</body>
+</html>
