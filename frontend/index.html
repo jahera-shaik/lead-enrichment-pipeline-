@@ -263,7 +263,7 @@ async function discoverLeads(){
     if(!r.ok){res.innerHTML='<p class="muted" style="margin-top:12px">Error: '+(d.detail||'failed')+'</p>';return;}
     if(!d.people||!d.people.length){res.innerHTML='<p class="muted" style="margin-top:12px">No individuals found on the team/about pages.</p>';return;}
     let html='<table style="margin-top:14px"><thead><tr><th>Name</th><th>Title</th><th></th></tr></thead><tbody>';
-    d.people.forEach((p,i)=>{html+=`<tr><td class="company-cell">${p.name}</td><td class="muted">${p.title||'—'}</td><td><button class="btn ghost" onclick='seedLead(${JSON.stringify(p.name)},${JSON.stringify(dom)},this)'>Enrich</button></td></tr>`;});
+    d.people.forEach((p,i)=>{html+=`<tr><td class="company-cell">${esc(p.name)}</td><td class="muted">${esc(p.title||'—')}</td><td><button class="btn ghost" data-name="${esc(p.name)}" data-domain="${esc(dom)}" onclick="seedLead(this.dataset.name, this.dataset.domain, this)">Enrich</button></td></tr>`;});
     html+='</tbody></table>';
     res.innerHTML=html;
   }catch(e){res.innerHTML='<p class="muted" style="margin-top:12px">Request failed.</p>';}
@@ -349,7 +349,7 @@ async function enrichLead(){
     const d=await r.json();
     if(!r.ok){st.textContent='Error: '+(d.detail||'failed');btn.disabled=false;return;}
     st.textContent='';
-    const emails=d.emails.map(e=>`<div style="margin-top:12px"><strong>${e.tone} — ${e.subject}</strong><div class="email-card">${e.body}<button class="copy-btn" onclick="navigator.clipboard.writeText(this.parentElement.textContent.replace('Copy',''))">Copy</button></div></div>`).join('');
+    const emails=renderDrafts('enrich', d.emails);
     res.innerHTML=`<div class="card" style="margin-top:18px">
       <div class="metrics"><div class="metric"><div class="ml">ICP Score</div><div class="mv">${d.icp_score}</div></div>
       <div class="metric"><div class="ml">Combined</div><div class="mv">${d.combined_score}</div></div>
@@ -427,7 +427,7 @@ async function loadDetail(){
         return `<div class="crit"><span class="muted" style="font-size:12px">${when}</span><span>ICP ${h.icp_score==null?'—':Math.round(h.icp_score)} · Combined ${h.combined_score==null?'—':Math.round(h.combined_score)}${arrow}</span></div>`;
       }).join('');
     }
-    const emails=(l.emails||[]).map(e=>`<div style="margin-top:12px"><strong>${e.tone} — ${e.subject}</strong><div class="email-card">${e.body}<button class="copy-btn" onclick="navigator.clipboard.writeText(this.parentElement.textContent.replace('Copy',''))">Copy</button></div></div>`).join('');
+    const emails=renderDrafts('detail', l.emails);
     body.innerHTML=`<div class="detail-split">
       <div class="card">
         <h2>${l.company||''}</h2>
@@ -448,7 +448,7 @@ async function loadDetail(){
         <div class="card"><h2>Outreach drafts</h2>${emails}</div>
         <div class="card">
           <div class="card-head"><h2>Outreach sequence</h2>
-            <button class="btn ghost" onclick="buildSequence(${l.id})">Build 3-step sequence</button></div>
+            <button class="btn ghost" data-company="${esc(l.company||'')}" onclick="buildSequence(${l.id}, this.dataset.company)">Build 3-step sequence</button></div>
           <div id="sequence-body"><span class="muted">Generates an initial email + 3-day follow-up + 7-day bump, exportable as CSV.</span></div>
         </div>
       </div>
@@ -473,20 +473,71 @@ async function loadEmails(name, domain){
   }catch(e){el.innerHTML='<span class="muted">Could not find emails.</span>';}
 }
 
-async function buildSequence(id){
+// holds the most recently built sequence so the Copy/Export buttons can read
+// it by index instead of unsafely embedding email text in HTML attributes
+let _seqData={company:'',csv:'',steps:[]};
+
+async function buildSequence(id, company){
   const el=document.getElementById('sequence-body');
   el.innerHTML='<span class="muted"><span class="spin"></span> Generating 3-step sequence (~30s)…</span>';
   try{
     const r=await fetch(API+'/sequence/'+id,{method:'POST'});const d=await r.json();
     if(!r.ok||!d.sequence){el.innerHTML='<span class="muted">Could not build sequence.</span>';return;}
+    _seqData={company:company||'lead',csv:d.csv||'',steps:d.sequence};
     const labels={initial:'Step 1 · Initial',follow_up:'Step 2 · Follow-up (+3 days)',final_bump:'Step 3 · Final bump (+7 days)'};
-    const steps=d.sequence.map(s=>`<div style="margin-top:12px"><strong>${labels[s.step]||s.step} — ${s.subject}</strong><div class="email-card">${s.body}<button class="copy-btn" onclick="navigator.clipboard.writeText(this.parentElement.textContent.replace('Copy',''))">Copy</button></div></div>`).join('');
-    el.innerHTML=steps+`<button class="btn" style="margin-top:14px" onclick='downloadCsv(${JSON.stringify(d.csv)},${JSON.stringify("sequence-"+id+".csv")})'>⬇ Export sequence CSV</button>`;
+    const steps=d.sequence.map((s,i)=>`<div style="margin-top:12px"><strong>${labels[s.step]||s.step} — ${esc(s.subject)}</strong><div class="email-card">${esc(s.body)}<button class="copy-btn" onclick="copySeqStep(${i}, this)">Copy</button></div></div>`).join('');
+    el.innerHTML=steps+`<button class="btn" style="margin-top:14px" onclick="exportSeq()">⬇ Export sequence CSV</button>`;
   }catch(e){el.innerHTML='<span class="muted">Sequence request failed.</span>';}
 }
-function downloadCsv(text,filename){
-  const blob=new Blob([text],{type:'text/csv'});const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');a.href=url;a.download=filename;a.click();URL.revokeObjectURL(url);
+
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+
+// shared clipboard helper: copies text and gives brief visual feedback on btn
+function copyToClipboard(text, btn){
+  const done=ok=>{btn.textContent=ok?'Copied!':'Copy failed';setTimeout(()=>{btn.textContent='Copy';},1000);};
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(()=>done(true)).catch(()=>done(false));
+  }else{
+    // fallback for non-secure contexts
+    const ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);
+    ta.select();let ok=false;try{ok=document.execCommand('copy');}catch(e){}
+    ta.remove();done(ok);
+  }
+}
+
+function copySeqStep(i, btn){
+  const s=_seqData.steps[i]; if(!s)return;
+  copyToClipboard(`Subject: ${s.subject}\n\n${s.body}`, btn);
+}
+
+// outreach drafts rendered in two places (enrich result + lead detail); stored
+// by reference so Copy uses the real email text, never parentElement.textContent
+let _draftStore={enrich:[],detail:[]};
+function renderDrafts(which, emails){
+  _draftStore[which]=emails||[];
+  return (emails||[]).map((e,i)=>`<div style="margin-top:12px"><strong>${esc(e.tone)} — ${esc(e.subject)}</strong><div class="email-card">${esc(e.body)}<button class="copy-btn" onclick="copyDraft('${which}',${i},this)">Copy</button></div></div>`).join('');
+}
+function copyDraft(which, i, btn){
+  const e=(_draftStore[which]||[])[i]; if(!e)return;
+  copyToClipboard(`Subject: ${e.subject}\n\n${e.body}`, btn);
+}
+
+function exportSeq(){
+  if(!_seqData.steps.length)return;
+  // prefer the backend-generated CSV (properly quoted); fall back to building it client-side
+  const csv=_seqData.csv||buildSeqCsv(_seqData.steps);
+  const safeName=(_seqData.company||'lead').replace(/[^a-z0-9]+/gi,'_').replace(/^_+|_+$/g,'')||'lead';
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download=`sequence_${safeName}.csv`;
+  document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
+}
+
+function buildSeqCsv(steps){
+  const q=v=>`"${String(v==null?'':v).replace(/"/g,'""')}"`;
+  const rows=[['step','send_day','subject','body']];
+  steps.forEach(s=>rows.push([s.step,s.day,s.subject,s.body]));
+  return rows.map(r=>r.map(q).join(',')).join('\r\n');
 }
 async function syncLead(id){
   const m=document.getElementById('sync-msg');m.innerHTML='<span class="spin"></span> Syncing…';
