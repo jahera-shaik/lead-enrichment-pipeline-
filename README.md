@@ -1,7 +1,7 @@
 # Alfaleus Lead Intelligence
 ### Lead Enrichment & Qualification Pipeline
 
-A sales-intelligence tool that takes a raw lead (name / company / website), autonomously enriches it from public sources, scores it against a configurable Ideal Customer Profile using **semantic reasoning from a local LLM**, detects buying signals, generates two personalized outreach drafts, and syncs everything to a Notion CRM. Ships with a web dashboard and a Chrome extension.
+A sales-intelligence tool that takes a raw lead (name / company / website), autonomously enriches it from public sources, scores it against a configurable Ideal Customer Profile using **semantic reasoning from a local LLM**, detects buying signals across sources, generates two personalized outreach drafts (full subject + body + CTA, written by the LLM), and syncs everything to a Notion CRM. Ships with a web dashboard, a Chrome extension, and four bonus modules (email finder, sequence builder, score history, domain-level discovery).
 
 > **Key constraint honored:** all ML inference runs **locally and CPU-bound** via `llama-cpp-python` — no external inference APIs (no Groq / OpenAI / Gemini).
 
@@ -10,6 +10,7 @@ A sales-intelligence tool that takes a raw lead (name / company / website), auto
 ## Table of Contents
 - [Architecture](#architecture)
 - [Features](#features)
+- [Bonus Features](#bonus-features)
 - [Model Choice & Memory Footprint](#model-choice--memory-footprint)
 - [ICP Scoring Formula](#icp-scoring-formula)
 - [Scraping Approach & Known Failure Modes](#scraping-approach--known-failure-modes)
@@ -61,13 +62,28 @@ The backend hosts a single local model instance shared by the dashboard and the 
 | Per-field confidence levels (high / medium / low) | Implemented |
 | Graceful degradation on source failure | Implemented |
 | Semantic ICP scoring (LLM reasoning, not keyword match) | Implemented |
-| Buying-signal detection with source + strength | Implemented |
+| Buying-signal detection across sources (news + tech-stack fit), typed + sourced | Implemented |
 | Configurable scoring weights & threshold (no code change) | Implemented |
-| 2 personalized outreach drafts (direct + consultative) | Implemented |
-| Notion CRM sync with deduplication + per-lead status | Implemented |
-| Web dashboard (5 screens) | Implemented |
-| Chrome extension (DOM extraction → backend) | Implemented |
-| CSV upload with client-side preview | Implemented |
+| 2 personalized outreach drafts — full email written by the LLM (direct + consultative) | Implemented |
+| Notion CRM sync with deduplication + per-lead status + all raw fields & ICP breakdown | Implemented |
+| Web dashboard (6 screens) — sortable/filterable table, ICP breakdown, score history | Implemented |
+| Live pipeline-status view (per-lead stage, auto-refresh) | Implemented |
+| ICP config screen with live "score a sample lead" preview | Implemented |
+| Chrome extension (DOM extraction → backend, Railway-configurable) | Implemented |
+| CSV upload — client-side validation + background (non-blocking) processing | Implemented |
+
+---
+
+## Bonus Features
+
+| Bonus | Status | Where |
+|---|---|---|
+| **Email finder** — permutation patterns + MX-record domain verification (no paid API); separates *verified* (domain has MX) from *likely* | Implemented | `services/email_finder.py`, detail view "Possible Emails" |
+| **Sequence builder** — 3-step outreach (initial / +3 days / +7 days), each LLM-generated, exportable as CSV for any sending tool | Implemented | `services/sequence.py`, detail view "Outreach sequence" |
+| **Lead scoring history** — every re-enrich appends to a timeline; detail view shows ICP/combined over time with ▲/▼ deltas | Implemented | `score_history` column in `database/db.py`, detail view "Score history" |
+| **Domain-level discovery** — input a domain, scrape its team/about pages, LLM-extract individual people (name + title) to seed as leads | Implemented | `services/discover.py`, "Add Lead" → "Discover leads from a domain" |
+
+> MX verification uses `dnspython`; if it is unavailable the finder degrades gracefully to a socket lookup and marks results *unverified* rather than failing.
 
 ---
 
@@ -85,8 +101,8 @@ The backend hosts a single local model instance shared by the dashboard and the 
 - **Never-fail JSON parser.** `generate_json()` strips code fences, extracts the first JSON block, repairs trailing commas, and falls back to `{"_parse_error": ...}` — it never raises, protecting every downstream call.
 - **Retry on flaky scoring.** ICP scoring retries once if the first parse fails (squares the success rate).
 - **Few-shot signal classification.** Examples in the prompt flip the model from misclassifying scandal/politics as buying signals to correctly favoring partnerships/funding/expansion.
-- **Repetition guard.** `repeat_penalty=1.3` plus a Python de-duplication guard prevents degenerate "word word word…" loops in email openers.
-- **Bounded generation for emails.** The model writes only the grounded opener; greeting, pitch, CTA, subject, and sign-off are templated in Python for reliability.
+- **Repetition guard.** `repeat_penalty=1.3` prevents degenerate "word word word…" loops.
+- **Full email, then hard-cleaned in Python.** The model writes the *complete* email (subject + body + CTA) grounded in the top buying signal or company description. A `_clean_email()` step then parses the `Subject:` line and **hard-trims everything after the sign-off**, stripping the small model's trailing meta-commentary ("Note:", "Greeting:", "This email follows…"). If output is empty/malformed, a Python fallback email is used. Two tone variants (direct + consultative) are produced.
 
 A larger model (e.g. Qwen2.5-1.5B) improves quality and is a one-line swap (`MODEL_PATH`), at higher memory cost.
 
@@ -102,7 +118,7 @@ combined_score = (weight_icp_fit       * icp_fit_score)
 ```
 
 - **`icp_fit_score`** (0-100): the average of five criteria — industry, company size, tech indicators, contact seniority, geography — each scored by the LLM using **genuine semantic reasoning**. Examples it handles: "boutique consultancy with 40 engineers" satisfies "20-100 employees"; "Head of Platform Engineering" maps to VP-equivalent seniority. Missing data scores a neutral 50 rather than guessing.
-- **`buying_signal_score`** (0-100): weighted sum of detected signals (high = 30, medium = 18, low = 8), capped at 100.
+- **`buying_signal_score`** (0-100): weighted sum of detected signals (high = 30, medium = 18, low = 8), capped at 100. Signals come from **two sources**: (1) Google News headlines, LLM-classified and typed as *funding / hiring / expansion / product*, and (2) a deterministic **tech-stack-fit** signal when the lead's detected tech overlaps the ICP's `target_tech_indicators`. Each signal records its strength, type, and source.
 - **Disqualifiers** (excluded industries, competitor names) are checked **deterministically in Python**, not by the LLM. This is a hard business rule and keeps the small model from confusing "target" vs "exclude" industries.
 
 **Defaults:** weights `0.7 / 0.3`, qualification threshold `50`. All editable in config.
@@ -111,7 +127,7 @@ combined_score = (weight_icp_fit       * icp_fit_score)
 
 ## Scraping Approach & Known Failure Modes
 
-- **Company website** — static fetch + BeautifulSoup. Extracts page title, meta description, visible text, tech-stack signatures (React, WordPress, Shopify, HubSpot, etc.), and up to 2 internal pages (about / pricing / careers).
+- **Company website** — static fetch + BeautifulSoup. Extracts page title, meta description, visible text (capped at 4000 chars to stay within the model's 2048-token context), tech-stack signatures (React, WordPress, Shopify, HubSpot, etc.), and up to 2 internal pages (about / pricing / careers).
   - *Failure mode:* JavaScript-rendered sites return little text. Handled by graceful degradation — title/meta are still captured and the pipeline continues.
 - **Google News** — RSS feed (no API key) for recent company mentions, used as the buying-signal source.
 - **LinkedIn** — **best-effort, via the Chrome extension only.** Server-side LinkedIn scraping is **not attempted** (auth wall, anti-scraping); it is marked `blocked / low confidence` and never aborts the pipeline.
@@ -125,8 +141,10 @@ combined_score = (weight_icp_fit       * icp_fit_score)
 
 Enforced in **two independent layers**, both verified on repeated runs:
 
-- **SQLite:** upsert keyed on `(company_domain, email)` — existing rows are updated, never duplicated.
+- **SQLite:** upsert keyed on `(company_domain, email)` — existing rows are updated, never duplicated. When a lead has **neither** a domain nor an email, it falls back to matching on `(name, company)` so name-only leads don't duplicate either.
 - **Notion CRM:** queries for an existing record by domain/email before writing; updates in place and reports per-lead status: `synced` / `updated` / `pending` / `failed`.
+
+Re-enriching an existing lead also appends a point to its `score_history` timeline (see Bonus Features) rather than overwriting history.
 
 ---
 
@@ -137,6 +155,7 @@ Enforced in **two independent layers**, both verified on repeated runs:
 | Backend / API | FastAPI + Uvicorn |
 | Local LLM | Qwen2.5-0.5B-Instruct (GGUF) via llama-cpp-python |
 | Scraping | requests, BeautifulSoup4, feedparser |
+| Email verification | dnspython (MX lookup) — bonus email finder |
 | Storage | SQLite (stdlib `sqlite3`) |
 | CRM | Notion API (`notion-client==2.2.1`) |
 | Frontend | Vanilla HTML / CSS / JS (single file) |
@@ -171,9 +190,16 @@ python dl.py
 #    NOTION_DB_ID=your_notion_database_id
 ```
 
-**Notion setup:** create an internal integration, build a database with columns
-`Name, Company, Domain, Email, ICP Score, Combined Score, Buying Signals, Status, Email Draft 1, Email Draft 2`,
-then connect the integration to the database (`•••` → Connections).
+**Notion setup:** create an internal integration, build a database with these columns, then connect the integration to the database (`•••` → Connections):
+
+```
+Name (title), Company (text), Domain (text), Email (email),
+ICP Score (number), Combined Score (number),
+Buying Signals (text), Enriched Fields (text), ICP Breakdown (text),
+Status (select), Email Draft 1 (text), Email Draft 2 (text)
+```
+
+> **Note:** `Enriched Fields` and `ICP Breakdown` are required for the full-record sync (all raw enriched fields with confidence levels + the per-criterion ICP breakdown). If a column is missing, the Notion write for that lead fails silently and the lead's sync status shows `failed`.
 
 ---
 
@@ -193,9 +219,18 @@ Interactive API docs are at **http://127.0.0.1:8000/docs**.
 1. Go to `chrome://extensions` and enable **Developer mode**.
 2. Click **Load unpacked** and select the `extension/` folder.
 3. With the backend running, open any company website or LinkedIn profile, click the
-   extension icon, review the auto-filled fields, and click **Enrich Lead**.
+   extension icon, review the auto-filled fields (name, title, company, location, URL),
+   and click **Enrich Lead**.
 4. Results (ICP score, buying signal, qualification) appear in the popup and the lead is
    saved to the dashboard.
+
+**Pointing the extension at a deployed backend.** The backend base URL defaults to
+`http://127.0.0.1:8000` for local dev. For the live Railway deployment, either:
+- edit `DEFAULT_API` at the top of `extension/popup.js`, **or**
+- set an override at runtime without editing code, from the extension's service-worker /
+  popup console: `chrome.storage.local.set({ apiBase: "https://your-app.up.railway.app" })`
+
+The manifest already grants host permissions for `*.railway.app` / `*.up.railway.app`.
 
 ---
 
@@ -206,11 +241,16 @@ Interactive API docs are at **http://127.0.0.1:8000/docs**.
 | GET | `/` | Health check |
 | GET | `/app` | Serves the dashboard |
 | POST | `/enrich` | Run the full pipeline on one lead |
-| POST | `/upload-csv` | Enrich a CSV batch |
+| POST | `/upload-csv` | Parse + clean a CSV, then enrich the batch **in the background** (returns immediately) |
 | GET | `/leads` | List all stored leads |
 | GET | `/lead/{id}` | Full detail for one lead |
 | POST | `/sync/{id}` | Push a lead to Notion (deduped) |
 | GET | `/icp` | Return the current ICP config |
+| GET | `/pipeline-status` | Live in-flight + recent enrichment jobs with per-lead stage |
+| POST | `/preview-icp` | Score a free-text sample lead against the current ICP (no storage) |
+| POST | `/find-emails` | **Bonus:** permutation emails + MX verification for a name + domain |
+| POST | `/sequence/{id}` | **Bonus:** build a 3-step outreach sequence + CSV for a stored lead |
+| POST | `/discover-leads` | **Bonus:** discover people from a company domain's team/about pages |
 
 ---
 
@@ -224,18 +264,20 @@ lead-pipeline/
 │   ├── llm.py             GGUF model singleton + never-fail JSON helpers
 │   ├── scraper.py         website + Google News + LinkedIn (best-effort)
 │   ├── enrichment.py      builds profile + confidence levels
-│   ├── icp.py             semantic ICP scoring + buying signals
-│   ├── outreach.py        2 grounded email variants
-│   └── crm.py             Notion sync + dedup + status
+│   ├── icp.py             semantic ICP scoring + multi-source buying signals
+│   ├── outreach.py        2 grounded full-email variants (LLM-written)
+│   ├── email_finder.py    bonus: permutation emails + MX verification
+│   ├── sequence.py        bonus: 3-step outreach sequence + CSV export
+│   ├── discover.py        bonus: domain-level people discovery
+│   └── crm.py             Notion sync + dedup + status (full-record)
 ├── database/
-│   └── db.py              SQLite schema + upsert/dedup + queries
+│   └── db.py              SQLite schema + upsert/dedup + score history + queries
 ├── frontend/
-│   └── index.html         dashboard (5 screens), served by FastAPI
+│   └── index.html         dashboard (6 screens), served by FastAPI
 ├── extension/             Chrome extension (Manifest V3)
 │   ├── manifest.json
 │   ├── popup.html
-│   ├── popup.js
-│   └── content.js
+│   └── popup.js           DOM extraction via chrome.scripting (no content script)
 ├── config/
 │   └── settings.json      ICP, scoring weights, product (editable, no code)
 ├── models/                GGUF model (gitignored)

@@ -104,6 +104,7 @@
   </div>
   <div class="nav-item active" data-tab="dashboard"><span class="ic">▦</span> Dashboard</div>
   <div class="nav-item" data-tab="enrich"><span class="ic">＋</span> Add Lead</div>
+  <div class="nav-item" data-tab="pipeline"><span class="ic">⟳</span> Pipeline</div>
   <div class="nav-item" data-tab="detail"><span class="ic">◳</span> Lead Detail</div>
   <div class="nav-item" data-tab="icp"><span class="ic">⚙</span> ICP Config</div>
   <div style="margin-top:auto;font-size:11px;color:var(--sidebar-text);padding:0 8px">Local LLM · CPU-bound</div>
@@ -116,8 +117,19 @@
     <div class="page-head"><h1>Lead Dashboard</h1><p>Qualified leads ranked by ICP fit — highest first.</p></div>
     <div class="card">
       <div class="card-head"><h2>All Leads <span class="muted" id="lead-count"></span></h2>
-        <button class="btn ghost" onclick="loadLeads()">↻ Refresh</button></div>
+        <div style="display:flex;gap:10px;align-items:center">
+          <input id="lead-filter" placeholder="Filter by company, contact, signal…" style="width:260px" oninput="renderLeads()">
+          <button class="btn ghost" onclick="loadLeads()">↻ Refresh</button></div></div>
       <div id="leads-table"></div>
+    </div>
+  </div>
+
+  <!-- PIPELINE STATUS -->
+  <div id="tab-pipeline" class="hidden">
+    <div class="page-head"><h1>Pipeline Status</h1><p>Leads currently being enriched, with the source/stage in progress. Auto-refreshes.</p></div>
+    <div class="card">
+      <div class="card-head"><h2>Active &amp; recent jobs</h2><button class="btn ghost" onclick="loadPipeline()">↻ Refresh</button></div>
+      <div id="pipeline-body"><div class="empty">Nothing running.</div></div>
     </div>
   </div>
 
@@ -137,10 +149,19 @@
     </div>
     <div class="card">
       <h2>Bulk upload (CSV)</h2>
-      <p class="muted" style="margin-bottom:12px">Columns: name, company, website, email (any subset).</p>
+      <p class="muted" style="margin-bottom:12px">Columns: name, company, website, email (any subset). The file is validated before upload.</p>
       <input type="file" id="csv-file" accept=".csv">
       <div id="csv-preview"></div>
-      <div style="margin-top:14px"><button class="btn ghost" onclick="uploadCsv()">Enrich all rows</button> <span id="csv-status" class="muted" style="margin-left:10px"></span></div>
+      <div style="margin-top:14px"><button class="btn ghost" id="csv-btn" onclick="uploadCsv()">Enrich all rows</button> <span id="csv-status" class="muted" style="margin-left:10px"></span></div>
+    </div>
+    <div class="card">
+      <h2>Discover leads from a domain</h2>
+      <p class="muted" style="margin-bottom:12px">Enter a company domain — we scrape its team/about pages and extract individual people to seed as leads.</p>
+      <div style="display:flex;gap:12px;align-items:flex-end">
+        <div style="flex:1"><label style="margin-top:0">Company domain</label><input id="discover-domain" placeholder="example.com"></div>
+        <button class="btn ghost" onclick="discoverLeads()">Discover</button>
+      </div>
+      <div id="discover-result"></div>
     </div>
   </div>
 
@@ -160,8 +181,19 @@
   <div id="tab-icp" class="hidden">
     <div class="page-head"><h1>ICP Configuration</h1><p>Your ideal customer profile and scoring weights.</p></div>
     <div class="card"><h2>Current ICP</h2>
-      <p class="muted">Editable in <code>config/settings.json</code> — no code changes needed.</p>
+      <p class="muted">Editable in <code>config/settings.json</code> — no code changes needed. The combined score = weight_icp_fit × ICP fit + weight_buying_signals × signal strength.</p>
       <div id="icp-body" style="margin-top:16px"></div>
+    </div>
+    <div class="card"><h2>Preview: score a sample lead</h2>
+      <p class="muted" style="margin-bottom:6px">Describe a hypothetical lead in plain English and see how the current ICP would score it — no data is saved.</p>
+      <div class="grid2">
+        <div><label style="margin-top:0">Company (optional)</label><input id="prev-company" placeholder="Boutique eye-care clinic"></div>
+        <div><label style="margin-top:0">Contact name (optional)</label><input id="prev-name" placeholder="Dr. Sangita Reddy, Head of Ophthalmology"></div>
+      </div>
+      <label>Description</label>
+      <textarea id="prev-desc" rows="3" placeholder="A 60-bed ophthalmology hospital in Chennai adopting AI diagnostics, led by a Head of Clinical Operations."></textarea>
+      <div style="margin-top:14px"><button class="btn" onclick="previewIcp()">Preview score</button> <span id="prev-status" class="muted" style="margin-left:10px"></span></div>
+      <div id="prev-result"></div>
     </div>
   </div>
 
@@ -178,36 +210,128 @@ document.querySelectorAll('.nav-item').forEach(b=>{
     document.getElementById('tab-'+b.dataset.tab).classList.remove('hidden');
     if(b.dataset.tab==='dashboard') loadLeads();
     if(b.dataset.tab==='icp') loadIcp();
+    if(b.dataset.tab==='pipeline'){loadPipeline();startPipelinePoll();} else {stopPipelinePoll();}
   };
 });
+
+let _pipePoll=null;
+function startPipelinePoll(){ if(!_pipePoll) _pipePoll=setInterval(loadPipeline,3000); }
+function stopPipelinePoll(){ if(_pipePoll){clearInterval(_pipePoll);_pipePoll=null;} }
+
+async function loadPipeline(){
+  const el=document.getElementById('pipeline-body'); if(!el) return;
+  try{
+    const r=await fetch(API+'/pipeline-status');const d=await r.json();
+    const jobs=d.recent||[];
+    if(!jobs.length){el.innerHTML='<div class="empty">Nothing running. Upload a CSV or enrich a lead to see live progress here.</div>';return;}
+    const statusPill=(s)=>{const c=s==='done'?'green':(s==='failed'?'amber':'gray');return `<span class="pill ${c}"><span class="dot"></span>${s}</span>`;};
+    let html='<table><thead><tr><th>Company</th><th>Contact</th><th>Stage</th><th>Status</th></tr></thead><tbody>';
+    jobs.forEach(j=>{
+      const stage=j.status==='running'?`<span class="spin"></span> ${j.stage}`:j.stage;
+      html+=`<tr><td class="company-cell">${j.company}</td><td class="muted">${j.name||'—'}</td><td>${stage}</td><td>${statusPill(j.status)}</td></tr>`;
+    });
+    html+='</tbody></table>';
+    el.innerHTML=html;
+  }catch(e){el.innerHTML='<div class="empty">Could not load pipeline status.</div>';}
+}
+
+async function previewIcp(){
+  const st=document.getElementById('prev-status'),res=document.getElementById('prev-result');
+  const desc=document.getElementById('prev-desc').value.trim();
+  if(!desc){st.textContent='Enter a description first.';return;}
+  st.innerHTML='<span class="spin"></span> Scoring…';res.innerHTML='';
+  try{
+    const body={name:document.getElementById('prev-name').value,company:document.getElementById('prev-company').value,description:desc};
+    const r=await fetch(API+'/preview-icp',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d=await r.json();
+    if(!r.ok){st.textContent='Error: '+(d.detail||'failed');return;}
+    st.textContent='';
+    const bd=d.breakdown||{};
+    const rows=Object.entries(bd).map(([k,v])=>{const pct=Math.max(0,Math.min(100,Number(v)||0));return `<div class="crit"><span class="muted">${k.replace(/_/g,' ')}</span>${scoreBar(pct)}</div>`;}).join('');
+    res.innerHTML=`<div class="card" style="margin-top:16px"><div class="metrics"><div class="metric"><div class="ml">ICP Fit Score</div><div class="mv">${d.icp_score}</div></div>${d.disqualified?'<div class="metric"><div class="ml">Status</div><div class="mv" style="color:var(--red)">Disqualified</div></div>':''}</div>${rows}${d.reasoning?`<p class="muted" style="margin-top:10px">${d.reasoning}</p>`:''}</div>`;
+  }catch(e){st.textContent='Request failed: '+e;}
+}
+
+async function discoverLeads(){
+  const dom=document.getElementById('discover-domain').value.trim();
+  const res=document.getElementById('discover-result');
+  if(!dom){res.innerHTML='<p class="muted" style="margin-top:12px">Enter a domain first.</p>';return;}
+  res.innerHTML='<p class="muted" style="margin-top:12px"><span class="spin"></span> Scraping team pages…</p>';
+  try{
+    const r=await fetch(API+'/discover-leads',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({domain:dom})});
+    const d=await r.json();
+    if(!r.ok){res.innerHTML='<p class="muted" style="margin-top:12px">Error: '+(d.detail||'failed')+'</p>';return;}
+    if(!d.people||!d.people.length){res.innerHTML='<p class="muted" style="margin-top:12px">No individuals found on the team/about pages.</p>';return;}
+    let html='<table style="margin-top:14px"><thead><tr><th>Name</th><th>Title</th><th></th></tr></thead><tbody>';
+    d.people.forEach((p,i)=>{html+=`<tr><td class="company-cell">${p.name}</td><td class="muted">${p.title||'—'}</td><td><button class="btn ghost" onclick='seedLead(${JSON.stringify(p.name)},${JSON.stringify(dom)},this)'>Enrich</button></td></tr>`;});
+    html+='</tbody></table>';
+    res.innerHTML=html;
+  }catch(e){res.innerHTML='<p class="muted" style="margin-top:12px">Request failed.</p>';}
+}
+async function seedLead(name,domain,btn){
+  btn.disabled=true;btn.textContent='Enriching…';
+  try{
+    await fetch(API+'/enrich',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,company:'',website:'https://'+domain,email:''})});
+    btn.textContent='✓ Added';
+  }catch(e){btn.textContent='Failed';btn.disabled=false;}
+}
 
 function scoreColor(s){ if(s==null) return '#CBD5E1'; if(s>=70) return 'var(--green)'; if(s>=31) return 'var(--amber)'; return 'var(--red)'; }
 function scoreBar(s){const v=s==null?0:s;return `<div class="score-wrap"><div class="score-bar"><div class="score-fill" style="width:${v}%;background:${scoreColor(s)}"></div></div><span class="score-num">${s==null?'—':Math.round(s)}</span></div>`;}
 function syncPill(st){const map={synced:'green',updated:'green',pending:'gray',failed:'amber'};const c=map[st]||'gray';return `<span class="pill ${c}"><span class="dot"></span>${st||'pending'}</span>`;}
 function enrichPill(st){const c=st==='enriched'?'green':(st==='partial'?'amber':'gray');return `<span class="pill ${c}"><span class="dot"></span>${st||'—'}</span>`;}
 
+let _allLeads=[];
+let _sort={key:'icp_score',dir:-1};
+const SORT_GETTERS={
+  company:l=>(l.company||'').toLowerCase(),
+  icp_score:l=>l.icp_score||0,
+  signal:l=>((l.buying_signals&&l.buying_signals[0])?l.buying_signals[0].signal:'').toLowerCase(),
+  enrich_status:l=>l.enrich_status||'',
+  sync_status:l=>l.sync_status||'',
+};
+function sortLeads(key){ if(_sort.key===key) _sort.dir*=-1; else _sort={key,dir:key==='icp_score'?-1:1}; renderLeads(); }
+
 async function loadLeads(){
   const el=document.getElementById('leads-table');
   el.innerHTML='<div class="empty"><span class="spin"></span> Loading…</div>';
   try{
     const r=await fetch(API+'/leads'); const data=await r.json();
-    const leads=(data.leads||[]).sort((a,b)=>(b.icp_score||0)-(a.icp_score||0));
-    document.getElementById('lead-count').textContent='· '+leads.length;
-    if(!leads.length){el.innerHTML='<div class="empty">No leads yet. Add one in “Add Lead”.</div>';return;}
-    let html='<table><thead><tr><th>Company</th><th>ICP Score</th><th>Top Buying Signal</th><th>Enrichment</th><th>CRM</th></tr></thead><tbody>';
-    leads.forEach(l=>{
-      const sig=(l.buying_signals&&l.buying_signals[0])?l.buying_signals[0].signal:null;
-      html+=`<tr onclick="openDetail(${l.id})">
-        <td><div class="company-cell">${l.company||'—'}<div class="sub">${l.name||'No contact'}</div></div></td>
-        <td>${scoreBar(l.icp_score)}</td>
-        <td>${sig?`<span class="badge">${sig.slice(0,46)}${sig.length>46?'…':''}</span>`:'<span class=muted>—</span>'}</td>
-        <td>${enrichPill(l.enrich_status)}</td>
-        <td>${syncPill(l.sync_status)}</td>
-      </tr>`;
-    });
-    html+='</tbody></table>';
-    el.innerHTML=html;
+    _allLeads=data.leads||[];
+    renderLeads();
   }catch(e){el.innerHTML='<div class="empty">Could not load leads. Is the backend running?</div>';}
+}
+
+function renderLeads(){
+  const el=document.getElementById('leads-table'); if(!el) return;
+  const q=(document.getElementById('lead-filter')?.value||'').toLowerCase().trim();
+  let leads=_allLeads.slice();
+  if(q){
+    leads=leads.filter(l=>{
+      const sig=(l.buying_signals&&l.buying_signals[0])?l.buying_signals[0].signal:'';
+      return [(l.company||''),(l.name||''),sig].join(' ').toLowerCase().includes(q);
+    });
+  }
+  const get=SORT_GETTERS[_sort.key]||SORT_GETTERS.icp_score;
+  leads.sort((a,b)=>{const x=get(a),y=get(b);return (x<y?-1:x>y?1:0)*_sort.dir;});
+  document.getElementById('lead-count').textContent='· '+leads.length;
+  if(!_allLeads.length){el.innerHTML='<div class="empty">No leads yet. Add one in “Add Lead”.</div>';return;}
+  if(!leads.length){el.innerHTML='<div class="empty">No leads match “'+q+'”.</div>';return;}
+  const arrow=k=>_sort.key===k?(_sort.dir>0?' ▲':' ▼'):'';
+  const th=(k,label)=>`<th style="cursor:pointer" onclick="sortLeads('${k}')">${label}${arrow(k)}</th>`;
+  let html='<table><thead><tr>'+th('company','Company')+th('icp_score','ICP Score')+th('signal','Top Buying Signal')+th('enrich_status','Enrichment')+th('sync_status','CRM')+'</tr></thead><tbody>';
+  leads.forEach(l=>{
+    const sig=(l.buying_signals&&l.buying_signals[0])?l.buying_signals[0].signal:null;
+    html+=`<tr onclick="openDetail(${l.id})">
+      <td><div class="company-cell">${l.company||'—'}<div class="sub">${l.name||'No contact'}</div></div></td>
+      <td>${scoreBar(l.icp_score)}</td>
+      <td>${sig?`<span class="badge">${sig.slice(0,46)}${sig.length>46?'…':''}</span>`:'<span class=muted>—</span>'}</td>
+      <td>${enrichPill(l.enrich_status)}</td>
+      <td>${syncPill(l.sync_status)}</td>
+    </tr>`;
+  });
+  html+='</tbody></table>';
+  el.innerHTML=html;
 }
 function openDetail(id){document.querySelector('[data-tab=detail]').click();document.getElementById('detail-id').value=id;loadDetail();}
 
@@ -237,19 +361,40 @@ async function enrichLead(){
   btn.disabled=false;
 }
 
+const KNOWN_COLS=['name','company','website','url','email'];
+let _csvValid=false;
+function setCsvBtn(ok){_csvValid=ok;const b=document.getElementById('csv-btn');if(b)b.disabled=!ok;}
+
 document.getElementById('csv-file').addEventListener('change',function(){
-  const f=this.files[0]; if(!f)return; const rd=new FileReader();
-  rd.onload=()=>{const rows=rd.result.split('\n').slice(0,6).map(r=>r.split(','));
+  const prev=document.getElementById('csv-preview'),st=document.getElementById('csv-status');
+  st.textContent='';setCsvBtn(false);prev.innerHTML='';
+  const f=this.files[0]; if(!f)return;
+  if(!f.name.toLowerCase().endsWith('.csv')){prev.innerHTML='<p style="margin-top:12px;color:var(--red)">⚠ That’s not a .csv file.</p>';return;}
+  const rd=new FileReader();
+  rd.onload=()=>{
+    const lines=rd.result.split(/\r?\n/).filter(l=>l.trim().length);
+    if(lines.length<2){prev.innerHTML='<p style="margin-top:12px;color:var(--red)">⚠ The file needs a header row and at least one data row.</p>';return;}
+    const header=lines[0].split(',').map(c=>c.trim().toLowerCase());
+    const matched=header.filter(h=>KNOWN_COLS.includes(h));
+    if(!matched.length){prev.innerHTML=`<p style="margin-top:12px;color:var(--red)">⚠ No recognized columns. Expected at least one of: ${KNOWN_COLS.join(', ')}. Found: ${header.join(', ')||'(none)'}.</p>`;return;}
+    const rows=lines.slice(0,6).map(r=>r.split(','));
     let h='<table style="margin-top:12px"><tbody>'+rows.map(r=>'<tr>'+r.map(c=>`<td style="padding:8px 14px">${c}</td>`).join('')+'</tr>').join('')+'</tbody></table>';
-    document.getElementById('csv-preview').innerHTML='<p class="muted" style="margin-top:12px">Preview:</p>'+h;};
+    prev.innerHTML=`<p class="muted" style="margin-top:12px">✓ Valid — recognized columns: <strong>${matched.join(', ')}</strong>. Preview of first ${rows.length} rows:</p>`+h;
+    setCsvBtn(true);
+  };
   rd.readAsText(f);
 });
 async function uploadCsv(){
   const f=document.getElementById('csv-file').files[0],st=document.getElementById('csv-status');
   if(!f){st.textContent='Choose a CSV first.';return;}
-  st.innerHTML='<span class="spin"></span> Enriching…';
+  if(!_csvValid){st.textContent='Fix the file format before uploading (see message above).';return;}
+  st.innerHTML='<span class="spin"></span> Uploading…';
   const fd=new FormData();fd.append('file',f);
-  try{const r=await fetch(API+'/upload-csv',{method:'POST',body:fd});const d=await r.json();st.textContent=`Processed ${d.processed} leads.`;loadLeads();}
+  try{
+    const r=await fetch(API+'/upload-csv',{method:'POST',body:fd});const d=await r.json();
+    if(!r.ok){st.textContent='Error: '+(d.detail||'failed');return;}
+    st.textContent=`Processing ${d.estimated_count} leads in background — open the Pipeline tab to watch progress, or click ↻ Refresh on the dashboard.`;
+  }
   catch(e){st.textContent='Failed: '+e;}
 }
 
@@ -261,7 +406,27 @@ async function loadDetail(){
     if(!r.ok){body.innerHTML='<div class="card empty">Lead not found.</div>';return;}
     const fields=(l.profile&&l.profile.fields)||{};
     const fieldRows=Object.entries(fields).map(([k,f])=>`<div class="crit"><span class="muted">${k}</span><span style="text-align:right">${Array.isArray(f.value)?f.value.join(', '):f.value} <span class="badge" style="margin-left:6px">${f.confidence}</span></span></div>`).join('')||'<span class="muted">No fields.</span>';
-    const sigs=(l.buying_signals||[]).map(s=>`<div class="crit"><span class="badge">${s.strength}</span><span style="flex:1;margin-left:12px">${s.signal}</span></div>`).join('')||'<span class="muted">None detected.</span>';
+    const sigs=(l.buying_signals||[]).map(s=>`<div class="crit"><span class="badge">${s.strength}${s.type?' · '+s.type:''}</span><span style="flex:1;margin-left:12px">${s.signal}<div class="sub" style="font-size:11px;color:var(--muted)">source: ${s.source||'—'}</div></span></div>`).join('')||'<span class="muted">None detected.</span>';
+
+    // ICP score breakdown by criterion (§6)
+    const bd=l.icp_breakdown||{};
+    const bdRows=Object.entries(bd).map(([k,v])=>{
+      const pct=Math.max(0,Math.min(100,Number(v)||0));
+      return `<div class="crit"><span class="muted">${k.replace(/_/g,' ')}</span><div class="score-wrap"><div class="score-bar"><div class="score-fill" style="width:${pct}%;background:${scoreColor(pct)}"></div></div><span class="score-num">${Math.round(pct)}</span></div></div>`;
+    }).join('')||'<span class="muted">No breakdown available.</span>';
+    const icpReason=l.icp_reasoning?`<p class="muted" style="margin-top:10px;font-size:13px">${l.icp_reasoning}</p>`:'';
+
+    // scoring history timeline (bonus)
+    const hist=l.score_history||[];
+    let histHtml='<span class="muted">No history yet.</span>';
+    if(hist.length){
+      histHtml=hist.map((h,i)=>{
+        const when=(h.at||'').slice(0,16).replace('T',' ');
+        const delta=i>0?(h.icp_score-hist[i-1].icp_score):0;
+        const arrow=i===0?'':(delta>0?` <span style="color:var(--green)">▲${Math.abs(Math.round(delta))}</span>`:(delta<0?` <span style="color:var(--red)">▼${Math.abs(Math.round(delta))}</span>`:' <span class="muted">→</span>'));
+        return `<div class="crit"><span class="muted" style="font-size:12px">${when}</span><span>ICP ${h.icp_score==null?'—':Math.round(h.icp_score)} · Combined ${h.combined_score==null?'—':Math.round(h.combined_score)}${arrow}</span></div>`;
+      }).join('');
+    }
     const emails=(l.emails||[]).map(e=>`<div style="margin-top:12px"><strong>${e.tone} — ${e.subject}</strong><div class="email-card">${e.body}<button class="copy-btn" onclick="navigator.clipboard.writeText(this.parentElement.textContent.replace('Copy',''))">Copy</button></div></div>`).join('');
     body.innerHTML=`<div class="detail-split">
       <div class="card">
@@ -275,12 +440,53 @@ async function loadDetail(){
         <div id="sync-msg" class="muted" style="margin-top:10px"></div>
       </div>
       <div>
+        <div class="card"><h2>ICP score breakdown</h2>${bdRows}${icpReason}</div>
         <div class="card"><h2>Enriched profile</h2>${fieldRows}</div>
         <div class="card"><h2>Buying signals</h2>${sigs}</div>
+        <div class="card"><h2>Score history</h2>${histHtml}</div>
+        <div class="card"><h2>Possible Emails</h2><div id="email-finder"><span class="muted"><span class="spin"></span> Finding…</span></div></div>
         <div class="card"><h2>Outreach drafts</h2>${emails}</div>
+        <div class="card">
+          <div class="card-head"><h2>Outreach sequence</h2>
+            <button class="btn ghost" onclick="buildSequence(${l.id})">Build 3-step sequence</button></div>
+          <div id="sequence-body"><span class="muted">Generates an initial email + 3-day follow-up + 7-day bump, exportable as CSV.</span></div>
+        </div>
       </div>
     </div>`;
+    loadEmails(l.name||'', l.company_domain||'');
   }catch(e){body.innerHTML='<div class="card empty">Error loading lead.</div>';}
+}
+
+async function loadEmails(name, domain){
+  const el=document.getElementById('email-finder');
+  if(!el) return;
+  if(!domain){el.innerHTML='<span class="muted">No domain known for this lead.</span>';return;}
+  try{
+    const r=await fetch(API+'/find-emails',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,company_domain:domain})});
+    const d=await r.json();
+    if(!r.ok||(!d.verified.length&&!d.likely.length)){el.innerHTML='<span class="muted">No email guesses available.</span>';return;}
+    const row=(e,cls,lbl)=>`<div class="crit"><span style="flex:1"><code>${e.email}</code></span><span class="pill ${cls}"><span class="dot"></span>${lbl}</span> <span class="muted" style="margin-left:8px;font-size:12px">${e.pattern}</span></div>`;
+    let html='';
+    html+=d.verified.map(e=>row(e,'green','verified')).join('');
+    html+=d.likely.map(e=>row(e,'gray','likely')).join('');
+    el.innerHTML=html;
+  }catch(e){el.innerHTML='<span class="muted">Could not find emails.</span>';}
+}
+
+async function buildSequence(id){
+  const el=document.getElementById('sequence-body');
+  el.innerHTML='<span class="muted"><span class="spin"></span> Generating 3-step sequence (~30s)…</span>';
+  try{
+    const r=await fetch(API+'/sequence/'+id,{method:'POST'});const d=await r.json();
+    if(!r.ok||!d.sequence){el.innerHTML='<span class="muted">Could not build sequence.</span>';return;}
+    const labels={initial:'Step 1 · Initial',follow_up:'Step 2 · Follow-up (+3 days)',final_bump:'Step 3 · Final bump (+7 days)'};
+    const steps=d.sequence.map(s=>`<div style="margin-top:12px"><strong>${labels[s.step]||s.step} — ${s.subject}</strong><div class="email-card">${s.body}<button class="copy-btn" onclick="navigator.clipboard.writeText(this.parentElement.textContent.replace('Copy',''))">Copy</button></div></div>`).join('');
+    el.innerHTML=steps+`<button class="btn" style="margin-top:14px" onclick='downloadCsv(${JSON.stringify(d.csv)},${JSON.stringify("sequence-"+id+".csv")})'>⬇ Export sequence CSV</button>`;
+  }catch(e){el.innerHTML='<span class="muted">Sequence request failed.</span>';}
+}
+function downloadCsv(text,filename){
+  const blob=new Blob([text],{type:'text/csv'});const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download=filename;a.click();URL.revokeObjectURL(url);
 }
 async function syncLead(id){
   const m=document.getElementById('sync-msg');m.innerHTML='<span class="spin"></span> Syncing…';

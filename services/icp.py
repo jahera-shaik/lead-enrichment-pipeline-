@@ -97,43 +97,100 @@ def score_icp_fit(profile: dict, icp: dict) -> dict:
     }
 
 
-def detect_buying_signals(profile: dict, icp: dict) -> list[dict]:
-    """Classify each headline as a buying signal (few-shot guided)."""
-    news = profile.get("raw_news", [])
-    if not news:
+# keyword hints used to TYPE a confirmed signal (funding/hiring/expansion/etc.)
+_SIGNAL_TYPE_HINTS = {
+    "funding": ("raise", "raises", "raised", "funding", "series ", "seed", "investment", "valuation"),
+    "hiring": ("hiring", "hires", "appoints", "appointed", "joins as", "names new", "new ceo", "new cto", "head of", "vp of"),
+    "expansion": ("expand", "expansion", "new office", "opens", "launch", "launches", "enters", "acqui", "partnership", "partners"),
+    "product": ("launches", "unveils", "introduces", "rolls out", "new product"),
+}
+
+
+def _signal_type(title: str) -> str:
+    t = (title or "").lower()
+    for kind, hints in _SIGNAL_TYPE_HINTS.items():
+        if any(h in t for h in hints):
+            return kind
+    return "news"
+
+
+def _tech_fit_signals(profile: dict, icp: dict) -> list[dict]:
+    """
+    Deterministic tech-stack-fit signal: if the lead's detected tech overlaps
+    the ICP's target tech indicators, that's a configurable buying signal.
+    Semantic-light on purpose — substring overlap is reliable for tech tokens.
+    """
+    fields = profile.get("fields", {})
+    tech = fields.get("tech_stack", {}).get("value", []) if "tech_stack" in fields else []
+    if isinstance(tech, str):
+        tech = [tech]
+    targets = [t.lower() for t in icp.get("target_tech_indicators", [])]
+    if not tech or not targets:
         return []
 
-    items = news[:6]
-    numbered = "\n".join(f"{i+1}. {it['title']}" for i, it in enumerate(items))
-    prompt = (
-        "Classify each news headline as a B2B BUYING SIGNAL or not.\n"
-        "BUYING SIGNALS (budget/growth/readiness): funding, partnership, deal, "
-        "expansion, new office, senior hire, product launch, digital "
-        "transformation, contract win.\n"
-        "NOT signals: scandal, corruption, politics, lawsuits, opinions, awards.\n\n"
-        "Examples:\n"
-        "'Acme partners with Govt for digital transformation' -> high "
-        "(partnership + transformation)\n"
-        "'Acme raises $20M Series B' -> high (funding)\n"
-        "'Acme founder comments on politics' -> none\n"
-        "'Acme accused of corruption' -> none\n"
-        "'Acme opens new Bangalore office' -> medium (expansion)\n\n"
-        f"Headlines:\n{numbered}\n\n"
-        'Return ONLY JSON mapping each number to "high"/"medium"/"low"/"none". '
-        'Example: {"1": "high", "2": "none"}'
-    )
-    result = generate_json(prompt, max_tokens=200)
+    matched = []
+    for item in tech:
+        il = str(item).lower()
+        for tgt in targets:
+            if tgt in il or il in tgt:
+                matched.append(item)
+                break
+    if not matched:
+        return []
+    return [{
+        "signal": f"Uses {', '.join(dict.fromkeys(matched))} — matches your target tech stack",
+        "strength": "medium",
+        "type": "tech_fit",
+        "source": "website:tech-signatures",
+    }]
 
+
+def detect_buying_signals(profile: dict, icp: dict) -> list[dict]:
+    """
+    Detect buying signals across sources:
+      - news headlines (LLM-classified, typed by funding/hiring/expansion/...)
+      - tech-stack fit vs the configured target tech (deterministic)
+    Each signal carries strength, type, and source.
+    """
     out = []
-    if isinstance(result, dict) and "_parse_error" not in result:
-        for i, it in enumerate(items):
-            verdict = str(result.get(str(i + 1), "none")).lower().strip()
-            if verdict in ("high", "medium", "low"):
-                out.append({
-                    "signal": it["title"],
-                    "strength": verdict,
-                    "source": "google_news",
-                })
+
+    # ---- news-based signals (LLM classification) ----
+    news = profile.get("raw_news", [])
+    if news:
+        items = news[:6]
+        numbered = "\n".join(f"{i+1}. {it['title']}" for i, it in enumerate(items))
+        prompt = (
+            "Classify each news headline as a B2B BUYING SIGNAL or not.\n"
+            "BUYING SIGNALS (budget/growth/readiness): funding, partnership, deal, "
+            "expansion, new office, senior hire, product launch, digital "
+            "transformation, contract win.\n"
+            "NOT signals: scandal, corruption, politics, lawsuits, opinions, awards.\n\n"
+            "Examples:\n"
+            "'Acme partners with Govt for digital transformation' -> high "
+            "(partnership + transformation)\n"
+            "'Acme raises $20M Series B' -> high (funding)\n"
+            "'Acme founder comments on politics' -> none\n"
+            "'Acme accused of corruption' -> none\n"
+            "'Acme opens new Bangalore office' -> medium (expansion)\n\n"
+            f"Headlines:\n{numbered}\n\n"
+            'Return ONLY JSON mapping each number to "high"/"medium"/"low"/"none". '
+            'Example: {"1": "high", "2": "none"}'
+        )
+        result = generate_json(prompt, max_tokens=200)
+        if isinstance(result, dict) and "_parse_error" not in result:
+            for i, it in enumerate(items):
+                verdict = str(result.get(str(i + 1), "none")).lower().strip()
+                if verdict in ("high", "medium", "low"):
+                    out.append({
+                        "signal": it["title"],
+                        "strength": verdict,
+                        "type": _signal_type(it["title"]),
+                        "source": "google_news",
+                    })
+
+    # ---- tech-stack-fit signal (deterministic, configurable) ----
+    out.extend(_tech_fit_signals(profile, icp))
+
     return out
 
 

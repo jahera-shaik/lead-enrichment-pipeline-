@@ -39,6 +39,32 @@ def _find_existing(domain: str, email: str):
         return None
 
 
+def _enriched_fields_text(lead: dict) -> str:
+    """Flatten every raw enriched field with its confidence + source."""
+    fields = (lead.get("profile") or {}).get("fields", {})
+    lines = []
+    for key, f in fields.items():
+        if not isinstance(f, dict):
+            continue
+        val = f.get("value", "")
+        if isinstance(val, list):
+            val = ", ".join(str(v) for v in val)
+        conf = f.get("confidence", "")
+        src = f.get("source", "")
+        lines.append(f"{key}: {val}  ({conf} confidence, source: {src})")
+    return "\n".join(lines) or "No enriched fields."
+
+
+def _icp_breakdown_text(lead: dict) -> str:
+    """Per-criterion ICP breakdown + reasoning, for the CRM record."""
+    bd = lead.get("icp_breakdown") or {}
+    lines = [f"{k}: {v}" for k, v in bd.items()]
+    reasoning = lead.get("icp_reasoning", "")
+    if reasoning:
+        lines.append(f"reasoning: {reasoning}")
+    return "\n".join(lines) or "No breakdown."
+
+
 def _build_properties(lead: dict) -> dict:
     """Map a lead dict to Notion properties matching our column names."""
     emails = lead.get("emails", [])
@@ -51,7 +77,8 @@ def _build_properties(lead: dict) -> dict:
 
     signals = lead.get("buying_signals", [])
     signal_text = "\n".join(
-        f"[{s.get('strength','')}] {s.get('signal','')}" for s in signals
+        f"[{s.get('strength','')}/{s.get('type','news')}] {s.get('signal','')} "
+        f"(source: {s.get('source','')})" for s in signals
     ) or "None detected"
 
     props = {
@@ -59,6 +86,9 @@ def _build_properties(lead: dict) -> dict:
         "Company": {"rich_text": _rich(lead.get("company", ""))},
         "Domain": {"rich_text": _rich(lead.get("company_domain", ""))},
         "Buying Signals": {"rich_text": _rich(signal_text)},
+        # spec §4: push ALL raw enriched fields with confidence + the ICP breakdown
+        "Enriched Fields": {"rich_text": _rich(_enriched_fields_text(lead))},
+        "ICP Breakdown": {"rich_text": _rich(_icp_breakdown_text(lead))},
         "Email Draft 1": {"rich_text": _rich(draft1)},
         "Email Draft 2": {"rich_text": _rich(draft2)},
     }

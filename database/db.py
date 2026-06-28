@@ -24,8 +24,13 @@ def init_db():
             email           TEXT,
             profile_json    TEXT,   -- full enriched profile (dict)
             icp_score       REAL,
+            combined_score  REAL,
+            icp_breakdown   TEXT,   -- JSON: per-criterion fit scores
+            icp_reasoning   TEXT,
+            qualified       INTEGER DEFAULT 0,
             buying_signals  TEXT,   -- JSON list
             emails_json     TEXT,   -- JSON list of draft variants
+            score_history   TEXT,   -- JSON list of {at, icp_score, combined_score}
             enrich_status   TEXT DEFAULT 'pending',  -- pending/enriched/partial/failed
             sync_status     TEXT DEFAULT 'pending',  -- pending/synced/failed/skipped
             created_at      TEXT,
@@ -33,6 +38,18 @@ def init_db():
             UNIQUE(company_domain, email)
         )
     """)
+    # migrate older databases: add any columns missing from the original schema
+    existing = {r["name"] for r in conn.execute("PRAGMA table_info(leads)").fetchall()}
+    migrations = {
+        "combined_score": "REAL",
+        "icp_breakdown": "TEXT",
+        "icp_reasoning": "TEXT",
+        "qualified": "INTEGER DEFAULT 0",
+        "score_history": "TEXT",
+    }
+    for col, decl in migrations.items():
+        if col not in existing:
+            conn.execute(f"ALTER TABLE leads ADD COLUMN {col} {decl}")
     conn.commit()
     conn.close()
 
@@ -53,6 +70,9 @@ def upsert_lead(lead: dict) -> int:
     domain = (lead.get("company_domain") or "").lower().strip()
     email = (lead.get("email") or "").lower().strip()
 
+    name = (lead.get("name") or "").strip()
+    company = (lead.get("company") or "").strip()
+
     # find existing by domain OR email (whichever we have)
     existing = None
     if domain or email:
@@ -63,19 +83,52 @@ def upsert_lead(lead: dict) -> int:
             (domain, email),
         )
         existing = cur.fetchone()
+    elif name or company:
+        # no domain AND no email: fall back to matching on (name, company)
+        # so leads with only a contact/company name don't duplicate.
+        cur.execute(
+            "SELECT id FROM leads WHERE "
+            "(company_domain = '' OR company_domain IS NULL) "
+            "AND (email = '' OR email IS NULL) "
+            "AND name = ? AND company = ?",
+            (name, company),
+        )
+        existing = cur.fetchone()
+
+    now = _now()
+    icp_score = lead.get("icp_score")
+    combined_score = lead.get("combined_score")
+
+    # build/extend the scoring-history timeline (bonus: score-over-time)
+    history = []
+    if existing:
+        prev = conn.execute(
+            "SELECT score_history FROM leads WHERE id = ?", (existing["id"],)
+        ).fetchone()
+        if prev and prev["score_history"]:
+            try:
+                history = json.loads(prev["score_history"])
+            except Exception:
+                history = []
+    history.append({"at": now, "icp_score": icp_score, "combined_score": combined_score})
 
     payload = {
-        "name": lead.get("name", ""),
-        "company": lead.get("company", ""),
+        "name": name,
+        "company": company,
         "company_domain": domain,
         "email": email,
         "profile_json": json.dumps(lead.get("profile", {})),
-        "icp_score": lead.get("icp_score"),
+        "icp_score": icp_score,
+        "combined_score": combined_score,
+        "icp_breakdown": json.dumps(lead.get("icp_breakdown", {})),
+        "icp_reasoning": lead.get("icp_reasoning", ""),
+        "qualified": 1 if lead.get("qualified") else 0,
         "buying_signals": json.dumps(lead.get("buying_signals", [])),
         "emails_json": json.dumps(lead.get("emails", [])),
+        "score_history": json.dumps(history),
         "enrich_status": lead.get("enrich_status", "pending"),
         "sync_status": lead.get("sync_status", "pending"),
-        "updated_at": _now(),
+        "updated_at": now,
     }
 
     if existing:
@@ -86,7 +139,7 @@ def upsert_lead(lead: dict) -> int:
             (*payload.values(), lead_id),
         )
     else:
-        payload["created_at"] = _now()
+        payload["created_at"] = now
         cols = ", ".join(payload.keys())
         placeholders = ", ".join("?" for _ in payload)
         cur.execute(
@@ -130,4 +183,7 @@ def _row_to_dict(row) -> dict:
     d["profile"] = json.loads(d.pop("profile_json") or "{}")
     d["buying_signals"] = json.loads(d.get("buying_signals") or "[]")
     d["emails"] = json.loads(d.pop("emails_json") or "[]")
+    d["icp_breakdown"] = json.loads(d.get("icp_breakdown") or "{}")
+    d["score_history"] = json.loads(d.get("score_history") or "[]")
+    d["qualified"] = bool(d.get("qualified"))
     return d

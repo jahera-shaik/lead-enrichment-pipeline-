@@ -9,3 +9,4 @@ python-dotenv==1.2.2
 notion-client==2.2.1
 huggingface-hub==1.20.1
 llama-cpp-python==0.2.90
+dnspython==2.6.1

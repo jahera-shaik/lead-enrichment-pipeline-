@@ -96,8 +96,8 @@ def scrape_website(url: str) -> dict:
             except requests.RequestException:
                 continue  # one page failing never kills the scrape
 
-        # cap total text so we don't blow the LLM context later
-        result["text"] = " ".join(texts)[:6000]
+        # cap total text so we don't blow the LLM context later (n_ctx is 2048)
+        result["text"] = " ".join(texts)[:4000]
 
     except requests.RequestException as e:
         result["status"] = "failed"

@@ -1,4 +1,15 @@
-const API = "http://127.0.0.1:8000";
+// Backend base URL. For local dev this is the FastAPI server; for the live
+// deployment set it to your Railway URL (e.g. "https://your-app.up.railway.app").
+// Override at runtime without re-editing: set chrome.storage.local "apiBase".
+const DEFAULT_API = "http://127.0.0.1:8000";
+let API = DEFAULT_API;
+
+// allow a stored override (e.g. the live Railway URL) to win over the default
+try {
+  chrome.storage?.local?.get?.("apiBase", (v) => {
+    if (v && v.apiBase) API = v.apiBase;
+  });
+} catch (e) { /* storage not available — keep default */ }
 
 // On open, run a script in the current page to read lead data from the DOM
 chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
@@ -8,17 +19,25 @@ chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
       target: { tabId: tab.id },
       func: () => {
         const url = window.location.href;
-        let data = { name: "", company: "", website: url };
+        let data = { name: "", title: "", company: "", location: "", website: url };
 
         if (url.includes("linkedin.com/in/")) {
           // ---- LinkedIn personal profile ----
           const n = document.querySelector("h1");
           if (n) data.name = n.innerText.trim();
 
-          let comp = "";
-          // 1) headline often reads "Role at Company"
+          // headline (role/title line under the name)
           const headline = document.querySelector(".text-body-medium.break-words")
                         || document.querySelector(".text-body-medium");
+          if (headline) data.title = headline.innerText.trim();
+
+          // location line (the lighter sub-text under the headline)
+          const loc = document.querySelector(".text-body-small.inline.t-black--light.break-words")
+                   || document.querySelector("span.text-body-small.inline");
+          if (loc) data.location = loc.innerText.trim();
+
+          let comp = "";
+          // 1) headline often reads "Role at Company"
           if (headline && headline.innerText.includes(" at ")) {
             comp = headline.innerText.split(" at ").pop().trim();
           }
@@ -54,7 +73,9 @@ chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
 
     const d = results[0].result;
     document.getElementById("name").value = d.name || "";
+    document.getElementById("title").value = d.title || "";
     document.getElementById("company").value = d.company || "";
+    document.getElementById("location").value = d.location || "";
     document.getElementById("website").value = d.website || "";
   } catch (e) {
     document.getElementById("status").textContent =
