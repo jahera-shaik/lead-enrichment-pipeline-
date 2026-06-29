@@ -32,9 +32,11 @@ def get_model():
         path = _ensure_model()
         _MODEL = Llama(
             model_path=path,
-            n_ctx=2048,
-            n_threads=os.cpu_count(),
+            n_ctx=1024,
+            n_threads=2,
+            n_batch=128,
             n_gpu_layers=0,
+            use_mlock=False,
             verbose=False,
         )
     return _MODEL
