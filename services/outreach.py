@@ -103,48 +103,145 @@ def _scrub_placeholders(text: str, recipient: str) -> str:
     return _PLACEHOLDER_RE.sub(recipient, text)
 
 
-def _gen_opener(company: str, hook: str, recipient: str) -> str:
-    """LLM call #1 — one grounded opening sentence (small bounded task)."""
-    prompt = (
-        f"You are a sales rep emailing {company}. Write ONE short opening sentence "
-        f"(max 30 words) from your point of view that references this specific fact:\n"
-        f"\"{hook}\"\n"
-        "Start with \"I noticed\" or \"I saw\". Output ONLY the sentence — no quotes, "
-        "no label, no greeting, no sign-off, no markdown."
-    )
-    raw = generate(prompt, max_tokens=40, temperature=0.5)
-    sentence = _limit_sentences(_sanitize(raw), 1)
-    if len(sentence) < 15:                        # empty/garbage fallback
-        sentence = f"I noticed {hook}."
+def _extract_facts(text: str, company: str) -> list:
+    """
+    Pull short, concrete offerings out of a scraped blurb (e.g. ["cashless
+    advanced medical care", "24×7 emergency services", "top specialists"]).
+    Skips the SEO title fragment ("Best multispeciality hospital in India") and
+    keeps only short noun phrases. Returns up to 3 facts.
+    """
+    text = re.sub(r"\s+", " ", text or "").strip()
+    text = re.sub(rf"^{re.escape(company)}\s*[:\-–]\s*", "", text,
+                  flags=re.IGNORECASE).strip()
+    # prefer the offerings listed after "offering/providing"
+    m = re.search(r"\b(?:offering|offers|providing|provides)\b\s*(.+)", text,
+                  re.IGNORECASE)
+    if m:
+        text = m.group(1)
+    text = re.split(r"(?<=[.!?])\s", text)[0]        # first sentence only
+    facts = []
+    for p in re.split(r",|\band\b", text):
+        p = p.strip(" .;:")
+        low = p.lower()
+        if (not p or low.startswith("best ") or "multispeciality hospital" in low
+                or "hospital in india" in low or len(p.split()) > 6):
+            continue
+        facts.append(p)
+        if len(facts) >= 3:
+            break
+    return facts
+
+
+def _join_facts(facts: list) -> str:
+    """Join a fact list into clean prose ("a, b and c")."""
+    if not facts:
+        return ""
+    if len(facts) == 1:
+        return facts[0]
+    return ", ".join(facts[:-1]) + " and " + facts[-1]
+
+
+def _gen_opener(company: str, hook: str, recipient: str, tone_key: str = "direct",
+                description: str = "") -> str:
+    """
+    Deterministic, fact-grounded opener (NO LLM call). The 0.5B leaked
+    instruction text into the opener ~1/3 of live runs, which is too unreliable
+    for a demo, and the opener is a small bounded piece — so we template it from
+    facts extracted from the scraped data. The value paragraph below stays
+    LLM-generated; this only makes the opener 100% clean and grounded.
+
+    Prefer the company description's concrete offerings (more specific) over the
+    hook, which may be a news headline with nothing to mine. Only fall back to
+    the generic "patient care" template when no concrete facts are available.
+    """
+    facts = _extract_facts(description, company)
+    if len(facts) < 2:
+        facts = _extract_facts(hook, company)
+    fact_phrase = _join_facts(facts)
+    if fact_phrase:
+        if tone_key == "consultative":
+            sentence = f"I came across {company} and its focus on {fact_phrase}."
+        else:
+            sentence = f"I noticed {company} offers {fact_phrase}."
+    elif tone_key == "consultative":
+        sentence = f"I came across {company} and the work they do in patient care."
+    else:
+        sentence = f"I noticed the work {company} does in patient care."
     return _scrub_placeholders(sentence, recipient)
 
 
-def _gen_value(company: str, product: dict, recipient: str) -> str:
+# Fabrication patterns for the value paragraph. The value paragraph must NEVER
+# invent people, quotes, titles, statistics, partnerships, or events — so any
+# sentence carrying one of these tells is dropped post-generation.
+_ATTRIBUTION_RE = re.compile(
+    r"\b(?:says?|said|according to|stated|noted|told|quoted|"
+    r"dr\.?|mr\.?|ms\.?|mrs\.?|prof\.?|professor)\b",
+    re.IGNORECASE,
+)
+# fabricated events / PR fluff the model likes to invent
+_EVENT_RE = re.compile(
+    r"\b(?:press conference|press release|interview|keynote|award|"
+    r"recently announced|in a recent|partnership with|partnered with)\b",
+    re.IGNORECASE,
+)
+_PERCENT_RE = re.compile(r"\d+\s*%")
+
+
+def _scrub_fabrications(paragraph: str, facts: str) -> str:
+    """
+    Deterministic anti-hallucination guard for the value paragraph. Drops any
+    sentence that attributes a statement to someone, references a fabricated
+    event, or cites a percentage not present in the real scraped facts.
+    """
+    facts = facts or ""
+    kept = []
+    for sent in re.split(r"(?<=[.!?])\s+", paragraph):
+        s = sent.strip()
+        if not s:
+            continue
+        if _ATTRIBUTION_RE.search(s) or _EVENT_RE.search(s):
+            continue
+        bad_pct = [p for p in _PERCENT_RE.findall(s) if p.replace(" ", "") not in
+                   facts.replace(" ", "")]
+        if bad_pct:
+            continue
+        kept.append(s)
+    return " ".join(kept).strip()
+
+
+def _gen_value(company: str, product: dict, recipient: str, facts: str = "") -> str:
     """LLM call #2 — a 2-3 sentence value paragraph (small bounded task)."""
     prompt = (
         f"Write 2 to 3 short sentences explaining how {product['name']} helps a "
         f"company like {company}. Base them strictly on this value proposition:\n"
         f"\"{product['value_proposition']}\"\n"
-        "Write plainly from the sales rep's point of view (\"we help...\"). Do NOT "
-        "invent statistics, dates, prices, or prior conversations. No greeting, no "
-        "subject, no sign-off, no markdown, no lists. Output only the sentences."
+        "Describe ONLY how the product helps a company like this. Do NOT mention "
+        "or invent any specific person, name, title, quote, statistic, percentage, "
+        "partnership, award, press conference, event, or date. Do NOT attribute "
+        "statements to anyone. Do NOT claim any prior contact. Write generically "
+        "in the sales rep's own voice about the product's value (\"we help...\"). "
+        "Plain prose only — no greeting, no subject, no sign-off, no markdown, no "
+        "lists. Output only the sentences."
     )
-    raw = generate(prompt, max_tokens=90, temperature=0.5)
+    raw = generate(prompt, max_tokens=90, temperature=0.3)
     paragraph = _limit_sentences(_sanitize(raw), 3)
+    # deterministic guard: strip any sentence that slipped a fabrication through
+    paragraph = _scrub_fabrications(paragraph, facts)
     if len(paragraph) < 15:                       # empty/garbage fallback
         paragraph = f"At {product['name']}, {product['value_proposition']}"
     return _scrub_placeholders(paragraph, recipient)
 
 
-def _generate_variant(tone_key, spec, recipient, company, product, hook):
+def _generate_variant(tone_key, spec, recipient, company, product, hook, facts="",
+                      description=""):
     """
     Hybrid assembly: the LLM writes only the opener + value paragraph; Python
     templates the subject, greeting, optional bridge, CTA, and sign-off and
     assembles them in a fixed, always-clean order.
     """
     sender = product["name"]
-    opener = _gen_opener(company, hook, recipient)
-    value = _gen_value(company, product, recipient)
+    opener = _gen_opener(company, hook, recipient, tone_key, description)
+    value = _gen_value(company, product, recipient, facts)
 
     subject = spec["subject"].format(company=company)
     parts = [f"Hi {recipient},", "", opener, "", value]
@@ -254,8 +351,11 @@ def generate_outreach(profile, qualification):
     company = profile.get("company", "")
     recipient = lead_name if lead_name else f"the {company} team"
     hook = _pick_hook(profile, qualification, company)
+    facts = _lead_facts(profile, qualification)
+    description = profile.get("fields", {}).get("description", {}).get("value", "")
 
     emails = []
     for tone_key, spec in VARIANTS.items():
-        emails.append(_generate_variant(tone_key, spec, recipient, company, product, hook))
+        emails.append(_generate_variant(tone_key, spec, recipient, company, product,
+                                        hook, facts, description))
     return emails
