@@ -19,7 +19,9 @@ A sales-intelligence tool that takes a raw lead (name / company / website), auto
 ## Live Demo
 
 **Live app:** https://jahera-shaik-lead-enrichment-pipeline.hf.space
+
 **Dashboard:** https://jahera-shaik-lead-enrichment-pipeline.hf.space/app
+
 **API docs:** https://jahera-shaik-lead-enrichment-pipeline.hf.space/docs
 
 Deployed on Hugging Face Spaces (Docker, free CPU tier). The app runs a **local CPU-bound LLM** (Qwen2.5-0.5B-Instruct GGUF via `llama-cpp-python`) — no external inference APIs, per the assignment constraint.
