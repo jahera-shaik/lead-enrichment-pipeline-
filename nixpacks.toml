@@ -1,5 +1,5 @@
 [phases.setup]
-nixPkgs = ["python311", "gcc", "cmake", "gnumake"]
+nixPkgs = ["python311", "gcc", "cmake", "gnumake", "libgomp"]
 
 [phases.install]
 cmds = [
