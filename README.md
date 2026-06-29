@@ -26,6 +26,10 @@ A sales-intelligence tool that takes a raw lead (name / company / website), auto
 
 Deployed on Hugging Face Spaces (Docker, free CPU tier). The app runs a **local CPU-bound LLM** (Qwen2.5-0.5B-Instruct GGUF via `llama-cpp-python`) — no external inference APIs, per the assignment constraint.
 
+### Deployment note (Railway → Hugging Face Spaces)
+
+The assignment specifies Railway's free tier. In practice, Railway's free instance (~512MB RAM) could not hold the ~470MB model plus runtime, causing an out-of-memory crash on inference. The identical Docker image is therefore deployed to Hugging Face Spaces' free tier, which satisfies every functional constraint — CPU-bound local LLM, no external or paid APIs, no LinkedIn API, and a live public URL — differing only in the hosting provider. The Railway configuration (Procfile, Dockerfile) remains in the repo.
+
 ### A note on performance (please read before testing)
 
 Because all inference is **local and CPU-bound** (no GPU, as required), enrichment is not instant:
@@ -42,7 +46,7 @@ On a machine with more RAM/CPU (or a GPU), the same code runs significantly fast
 **Live walkthrough (primary):** https://www.loom.com/share/baf1b4b288624200bb8ece21eeccfe60
 Full demo of the working app — CSV upload → enrichment → ICP scoring → outreach draft → Notion CRM sync.
 
-**Concept & architecture overview:** [PASTE_CONCEPT_LINK_HERE]
+**Concept & architecture overview:** https://docs.google.com/videos/d/1H3BcVGCaK_u5WW2H0pUaqa7kl-Dp3G-tN0aK1AqHv-Y/preview
 Slide-based explainer covering architecture, ICP scoring logic, tech stack, and engineering trade-offs.
 
 ---
