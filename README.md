@@ -322,3 +322,9 @@ lead-pipeline/
 - **`notion-client` pinned to 2.2.1.** Version 3.x migrated to a data-source API incompatible with the classic database calls used here; 2.2.1 resolves database IDs correctly.
 - **Python 3.11** is required — `llama-cpp-python` prebuilt wheels are most reliable there.
 - **Secrets** live in `.env` (gitignored); the model and database files are gitignored as well.
+
+---
+
+## Development Note
+
+This project was built using AI-assisted development (Claude Code) to accelerate implementation. All architecture and design decisions, third-party integrations (Notion, Hugging Face, the local LLM setup), debugging, and end-to-end verification were directed and validated by me. Every feature was tested live before being committed, and the engineering trade-offs documented throughout this README reflect decisions made during that process.
