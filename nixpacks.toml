@@ -5,6 +5,7 @@ nixPkgs = ["python311", "gcc", "cmake", "gnumake", "libgomp"]
 cmds = [
   "pip install --upgrade pip",
   "pip install --no-cache-dir -r requirements.txt --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu",
+  "mkdir -p models && python -c \"from huggingface_hub import hf_hub_download; hf_hub_download(repo_id='Qwen/Qwen2.5-0.5B-Instruct-GGUF', filename='qwen2.5-0.5b-instruct-q4_k_m.gguf', local_dir='models')\"",
 ]
 
 [start]
