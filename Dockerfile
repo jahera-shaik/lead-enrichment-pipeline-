@@ -14,5 +14,5 @@ RUN pip install --upgrade pip && \
 COPY . .
 RUN mkdir -p models && python -c "from huggingface_hub import hf_hub_download; hf_hub_download(repo_id='Qwen/Qwen2.5-0.5B-Instruct-GGUF', filename='qwen2.5-0.5b-instruct-q4_k_m.gguf', local_dir='models')"
 
-EXPOSE 8000
-CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
+EXPOSE 7860
+CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "7860"]
