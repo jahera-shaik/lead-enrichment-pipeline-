@@ -12,7 +12,7 @@ pinned: false
 
 A sales-intelligence tool that takes a raw lead (name / company / website), autonomously enriches it from public sources, scores it against a configurable Ideal Customer Profile using **semantic reasoning from a local LLM**, detects buying signals across sources, generates two personalized outreach drafts (full subject + body + CTA, written by the LLM), and syncs everything to a Notion CRM. Ships with a web dashboard, a Chrome extension, and four bonus modules (email finder, sequence builder, score history, domain-level discovery).
 
-> **Key constraint honored:** all ML inference runs **locally and CPU-bound** via `llama-cpp-python` â€” no external inference APIs (no Groq / OpenAI / Gemini).
+> **Key constraint honored:** all ML inference runs **locally and CPU-bound** via `llama-cpp-python` — no external inference APIs (no Groq / OpenAI / Gemini).
 
 ---
 
@@ -92,13 +92,13 @@ The backend hosts a single local model instance shared by the dashboard and the 
 | Semantic ICP scoring (LLM reasoning, not keyword match) | Implemented |
 | Buying-signal detection across sources (news + tech-stack fit), typed + sourced | Implemented |
 | Configurable scoring weights & threshold (no code change) | Implemented |
-| 2 personalized outreach drafts â€” full email written by the LLM (direct + consultative) | Implemented |
+| 2 personalized outreach drafts — full email written by the LLM (direct + consultative) | Implemented |
 | Notion CRM sync with deduplication + per-lead status + all raw fields & ICP breakdown | Implemented |
-| Web dashboard (6 screens) â€” sortable/filterable table, ICP breakdown, score history | Implemented |
+| Web dashboard (6 screens) — sortable/filterable table, ICP breakdown, score history | Implemented |
 | Live pipeline-status view (per-lead stage, auto-refresh) | Implemented |
 | ICP config screen with live "score a sample lead" preview | Implemented |
-| Chrome extension (DOM extraction â†’ backend, Railway-configurable) | Implemented |
-| CSV upload â€” client-side validation + background (non-blocking) processing | Implemented |
+| Chrome extension (DOM extraction → backend, Railway-configurable) | Implemented |
+| CSV upload — client-side validation + background (non-blocking) processing | Implemented |
 
 ---
 
@@ -106,10 +106,10 @@ The backend hosts a single local model instance shared by the dashboard and the 
 
 | Bonus | Status | Where |
 |---|---|---|
-| **Email finder** â€” permutation patterns + MX-record domain verification (no paid API); separates *verified* (domain has MX) from *likely* | Implemented | `services/email_finder.py`, detail view "Possible Emails" |
-| **Sequence builder** â€” 3-step outreach (initial / +3 days / +7 days), each LLM-generated, exportable as CSV for any sending tool | Implemented | `services/sequence.py`, detail view "Outreach sequence" |
-| **Lead scoring history** â€” every re-enrich appends to a timeline; detail view shows ICP/combined over time with â–²/â–¼ deltas | Implemented | `score_history` column in `database/db.py`, detail view "Score history" |
-| **Domain-level discovery** â€” input a domain, scrape its team/about pages, LLM-extract individual people (name + title) to seed as leads | Implemented | `services/discover.py`, "Add Lead" â†’ "Discover leads from a domain" |
+| **Email finder** — permutation patterns + MX-record domain verification (no paid API); separates *verified* (domain has MX) from *likely* | Implemented | `services/email_finder.py`, detail view "Possible Emails" |
+| **Sequence builder** — 3-step outreach (initial / +3 days / +7 days), each LLM-generated, exportable as CSV for any sending tool | Implemented | `services/sequence.py`, detail view "Outreach sequence" |
+| **Lead scoring history** — every re-enrich appends to a timeline; detail view shows ICP/combined over time with ▲/▼ deltas | Implemented | `score_history` column in `database/db.py`, detail view "Score history" |
+| **Domain-level discovery** — input a domain, scrape its team/about pages, LLM-extract individual people (name + title) to seed as leads | Implemented | `services/discover.py`, "Add Lead" → "Discover leads from a domain" |
 
 > MX verification uses `dnspython`; if it is unavailable the finder degrades gracefully to a socket lookup and marks results *unverified* rather than failing.
 
@@ -126,11 +126,11 @@ The backend hosts a single local model instance shared by the dashboard and the 
 **Trade-offs & how they're mitigated.** A 0.5B model is weak at complex structured generation, so the pipeline is engineered around that:
 
 - **Simplest-possible output, structured in Python.** For buying signals the model only returns a flat map like `{"1":"high","2":"none"}`; Python attaches the headline text. This avoids nested JSON that small models break on (headlines contain quotes/colons).
-- **Never-fail JSON parser.** `generate_json()` strips code fences, extracts the first JSON block, repairs trailing commas, and falls back to `{"_parse_error": ...}` â€” it never raises, protecting every downstream call.
+- **Never-fail JSON parser.** `generate_json()` strips code fences, extracts the first JSON block, repairs trailing commas, and falls back to `{"_parse_error": ...}` — it never raises, protecting every downstream call.
 - **Retry on flaky scoring.** ICP scoring retries once if the first parse fails (squares the success rate).
 - **Few-shot signal classification.** Examples in the prompt flip the model from misclassifying scandal/politics as buying signals to correctly favoring partnerships/funding/expansion.
-- **Repetition guard.** `repeat_penalty=1.3` prevents degenerate "word word wordâ€¦" loops.
-- **Full email, then hard-cleaned in Python.** The model writes the *complete* email (subject + body + CTA) grounded in the top buying signal or company description. A `_clean_email()` step then parses the `Subject:` line and **hard-trims everything after the sign-off**, stripping the small model's trailing meta-commentary ("Note:", "Greeting:", "This email followsâ€¦"). If output is empty/malformed, a Python fallback email is used. Two tone variants (direct + consultative) are produced.
+- **Repetition guard.** `repeat_penalty=1.3` prevents degenerate "word word word…" loops.
+- **Full email, then hard-cleaned in Python.** The model writes the *complete* email (subject + body + CTA) grounded in the top buying signal or company description. A `_clean_email()` step then parses the `Subject:` line and **hard-trims everything after the sign-off**, stripping the small model's trailing meta-commentary ("Note:", "Greeting:", "This email follows…"). If output is empty/malformed, a Python fallback email is used. Two tone variants (direct + consultative) are produced.
 
 A larger model (e.g. Qwen2.5-1.5B) improves quality and is a one-line swap (`MODEL_PATH`), at higher memory cost.
 
@@ -138,14 +138,14 @@ A larger model (e.g. Qwen2.5-1.5B) improves quality and is a one-line swap (`MOD
 
 ## ICP Scoring Formula
 
-Configured entirely in `config/settings.json` â€” **no code changes required.**
+Configured entirely in `config/settings.json` — **no code changes required.**
 
 ```
 combined_score = (weight_icp_fit       * icp_fit_score)
                + (weight_buying_signals * buying_signal_score)
 ```
 
-- **`icp_fit_score`** (0-100): the average of five criteria â€” industry, company size, tech indicators, contact seniority, geography â€” each scored by the LLM using **genuine semantic reasoning**. Examples it handles: "boutique consultancy with 40 engineers" satisfies "20-100 employees"; "Head of Platform Engineering" maps to VP-equivalent seniority. Missing data scores a neutral 50 rather than guessing.
+- **`icp_fit_score`** (0-100): the average of five criteria — industry, company size, tech indicators, contact seniority, geography — each scored by the LLM using **genuine semantic reasoning**. Examples it handles: "boutique consultancy with 40 engineers" satisfies "20-100 employees"; "Head of Platform Engineering" maps to VP-equivalent seniority. Missing data scores a neutral 50 rather than guessing.
 - **`buying_signal_score`** (0-100): weighted sum of detected signals (high = 30, medium = 18, low = 8), capped at 100. Signals come from **two sources**: (1) Google News headlines, LLM-classified and typed as *funding / hiring / expansion / product*, and (2) a deterministic **tech-stack-fit** signal when the lead's detected tech overlaps the ICP's `target_tech_indicators`. Each signal records its strength, type, and source.
 - **Disqualifiers** (excluded industries, competitor names) are checked **deterministically in Python**, not by the LLM. This is a hard business rule and keeps the small model from confusing "target" vs "exclude" industries.
 
@@ -155,11 +155,11 @@ combined_score = (weight_icp_fit       * icp_fit_score)
 
 ## Scraping Approach & Known Failure Modes
 
-- **Company website** â€” static fetch + BeautifulSoup. Extracts page title, meta description, visible text (capped at 4000 chars to stay within the model's 2048-token context), tech-stack signatures (React, WordPress, Shopify, HubSpot, etc.), and up to 2 internal pages (about / pricing / careers).
-  - *Failure mode:* JavaScript-rendered sites return little text. Handled by graceful degradation â€” title/meta are still captured and the pipeline continues.
-- **Google News** â€” RSS feed (no API key) for recent company mentions, used as the buying-signal source.
-- **LinkedIn** â€” **best-effort, via the Chrome extension only.** Server-side LinkedIn scraping is **not attempted** (auth wall, anti-scraping); it is marked `blocked / low confidence` and never aborts the pipeline.
-  - *Failure mode:* LinkedIn's obfuscated, lazy-loaded DOM means name/company auto-fill in the extension may miss or grab the wrong company link. **All popup fields are editable**, so the user corrects before enriching â€” graceful degradation by design.
+- **Company website** — static fetch + BeautifulSoup. Extracts page title, meta description, visible text (capped at 4000 chars to stay within the model's 2048-token context), tech-stack signatures (React, WordPress, Shopify, HubSpot, etc.), and up to 2 internal pages (about / pricing / careers).
+  - *Failure mode:* JavaScript-rendered sites return little text. Handled by graceful degradation — title/meta are still captured and the pipeline continues.
+- **Google News** — RSS feed (no API key) for recent company mentions, used as the buying-signal source.
+- **LinkedIn** — **best-effort, via the Chrome extension only.** Server-side LinkedIn scraping is **not attempted** (auth wall, anti-scraping); it is marked `blocked / low confidence` and never aborts the pipeline.
+  - *Failure mode:* LinkedIn's obfuscated, lazy-loaded DOM means name/company auto-fill in the extension may miss or grab the wrong company link. **All popup fields are editable**, so the user corrects before enriching — graceful degradation by design.
 - Every enriched field carries a **confidence level** (high / medium / low) based on whether it was directly stated or inferred.
 - All network calls have **hard timeouts** so a slow or dead source fails fast instead of hanging the pipeline.
 
@@ -169,7 +169,7 @@ combined_score = (weight_icp_fit       * icp_fit_score)
 
 Enforced in **two independent layers**, both verified on repeated runs:
 
-- **SQLite:** upsert keyed on `(company_domain, email)` â€” existing rows are updated, never duplicated. When a lead has **neither** a domain nor an email, it falls back to matching on `(name, company)` so name-only leads don't duplicate either.
+- **SQLite:** upsert keyed on `(company_domain, email)` — existing rows are updated, never duplicated. When a lead has **neither** a domain nor an email, it falls back to matching on `(name, company)` so name-only leads don't duplicate either.
 - **Notion CRM:** queries for an existing record by domain/email before writing; updates in place and reports per-lead status: `synced` / `updated` / `pending` / `failed`.
 
 Re-enriching an existing lead also appends a point to its `score_history` timeline (see Bonus Features) rather than overwriting history.
@@ -183,7 +183,7 @@ Re-enriching an existing lead also appends a point to its `score_history` timeli
 | Backend / API | FastAPI + Uvicorn |
 | Local LLM | Qwen2.5-0.5B-Instruct (GGUF) via llama-cpp-python |
 | Scraping | requests, BeautifulSoup4, feedparser |
-| Email verification | dnspython (MX lookup) â€” bonus email finder |
+| Email verification | dnspython (MX lookup) — bonus email finder |
 | Storage | SQLite (stdlib `sqlite3`) |
 | CRM | Notion API (`notion-client==2.2.1`) |
 | Frontend | Vanilla HTML / CSS / JS (single file) |
@@ -218,7 +218,7 @@ python dl.py
 #    NOTION_DB_ID=your_notion_database_id
 ```
 
-**Notion setup:** create an internal integration, build a database with these columns, then connect the integration to the database (`â€¢â€¢â€¢` â†’ Connections):
+**Notion setup:** create an internal integration, build a database with these columns, then connect the integration to the database (`•••` → Connections):
 
 ```
 Name (title), Company (text), Domain (text), Email (email),
@@ -318,7 +318,7 @@ lead-pipeline/
 
 ## Implementation Notes
 
-- **Local inference only.** No external LLM APIs are used anywhere â€” the constraint is honored end-to-end.
+- **Local inference only.** No external LLM APIs are used anywhere — the constraint is honored end-to-end.
 - **`notion-client` pinned to 2.2.1.** Version 3.x migrated to a data-source API incompatible with the classic database calls used here; 2.2.1 resolves database IDs correctly.
-- **Python 3.11** is required â€” `llama-cpp-python` prebuilt wheels are most reliable there.
+- **Python 3.11** is required — `llama-cpp-python` prebuilt wheels are most reliable there.
 - **Secrets** live in `.env` (gitignored); the model and database files are gitignored as well.
