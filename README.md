@@ -16,6 +16,25 @@ A sales-intelligence tool that takes a raw lead (name / company / website), auto
 
 ---
 
+## Live Demo
+
+**Live app:** https://jahera-shaik-lead-enrichment-pipeline.hf.space
+**Dashboard:** https://jahera-shaik-lead-enrichment-pipeline.hf.space/app
+**API docs:** https://jahera-shaik-lead-enrichment-pipeline.hf.space/docs
+
+Deployed on Hugging Face Spaces (Docker, free CPU tier). The app runs a **local CPU-bound LLM** (Qwen2.5-0.5B-Instruct GGUF via `llama-cpp-python`) — no external inference APIs, per the assignment constraint.
+
+### A note on performance (please read before testing)
+
+Because all inference is **local and CPU-bound** (no GPU, as required), enrichment is not instant:
+
+- **First request after the Space wakes up takes ~30-60s** while the model loads into memory. If the first enrich times out or errors, simply **try once more** — the model is then loaded and subsequent requests work normally.
+- **Each enrichment takes ~30-90s** end to end (website scrape + Google News + semantic ICP scoring + buying-signal detection + two grounded outreach emails — several CPU LLM passes in sequence). This latency is inherent to running a quantized model on a free CPU tier and is the expected trade-off for the "local LLM, no external APIs" requirement.
+
+On a machine with more RAM/CPU (or a GPU), the same code runs significantly faster with no changes.
+
+---
+
 ## Table of Contents
 - [Architecture](#architecture)
 - [Features](#features)
