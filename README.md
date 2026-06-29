@@ -37,6 +37,16 @@ On a machine with more RAM/CPU (or a GPU), the same code runs significantly fast
 
 ---
 
+## Demo Videos
+
+**Live walkthrough (primary):** https://www.loom.com/share/baf1b4b288624200bb8ece21eeccfe60
+Full demo of the working app — CSV upload → enrichment → ICP scoring → outreach draft → Notion CRM sync.
+
+**Concept & architecture overview:** [PASTE_CONCEPT_LINK_HERE]
+Slide-based explainer covering architecture, ICP scoring logic, tech stack, and engineering trade-offs.
+
+---
+
 ## Table of Contents
 - [Architecture](#architecture)
 - [Features](#features)
