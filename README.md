@@ -286,39 +286,39 @@ The manifest already grants host permissions for `*.railway.app` / `*.up.railway
 
 ```
 lead-pipeline/
-â”œâ”€â”€ backend/
-â”‚   â””â”€â”€ main.py            FastAPI app + endpoints + pipeline orchestration
-â”œâ”€â”€ services/
-â”‚   â”œâ”€â”€ llm.py             GGUF model singleton + never-fail JSON helpers
-â”‚   â”œâ”€â”€ scraper.py         website + Google News + LinkedIn (best-effort)
-â”‚   â”œâ”€â”€ enrichment.py      builds profile + confidence levels
-â”‚   â”œâ”€â”€ icp.py             semantic ICP scoring + multi-source buying signals
-â”‚   â”œâ”€â”€ outreach.py        2 grounded full-email variants (LLM-written)
-â”‚   â”œâ”€â”€ email_finder.py    bonus: permutation emails + MX verification
-â”‚   â”œâ”€â”€ sequence.py        bonus: 3-step outreach sequence + CSV export
-â”‚   â”œâ”€â”€ discover.py        bonus: domain-level people discovery
-â”‚   â””â”€â”€ crm.py             Notion sync + dedup + status (full-record)
-â”œâ”€â”€ database/
-â”‚   â””â”€â”€ db.py              SQLite schema + upsert/dedup + score history + queries
-â”œâ”€â”€ frontend/
-â”‚   â””â”€â”€ index.html         dashboard (6 screens), served by FastAPI
-â”œâ”€â”€ extension/             Chrome extension (Manifest V3)
-â”‚   â”œâ”€â”€ manifest.json
-â”‚   â”œâ”€â”€ popup.html
-â”‚   â””â”€â”€ popup.js           DOM extraction via chrome.scripting (no content script)
-â”œâ”€â”€ config/
-â”‚   â””â”€â”€ settings.json      ICP, scoring weights, product (editable, no code)
-â”œâ”€â”€ models/                GGUF model (gitignored)
-â”œâ”€â”€ dl.py                  model downloader
-â”œâ”€â”€ requirements.txt
-â””â”€â”€ README.md
+├── backend/
+│   └── main.py            FastAPI app + endpoints + pipeline orchestration
+├── services/
+│   ├── llm.py             GGUF model singleton + never-fail JSON helpers
+│   ├── scraper.py         website + Google News + LinkedIn (best-effort)
+│   ├── enrichment.py      builds profile + confidence levels
+│   ├── icp.py             semantic ICP scoring + multi-source buying signals
+│   ├── outreach.py        2 grounded full-email variants (LLM-written)
+│   ├── email_finder.py    bonus: permutation emails + MX verification
+│   ├── sequence.py        bonus: 3-step outreach sequence + CSV export
+│   ├── discover.py        bonus: domain-level people discovery
+│   └── crm.py             Notion sync + dedup + status (full-record)
+├── database/
+│   └── db.py              SQLite schema + upsert/dedup + score history + queries
+├── frontend/
+│   └── index.html         dashboard (6 screens), served by FastAPI
+├── extension/             Chrome extension (Manifest V3)
+│   ├── manifest.json
+│   ├── popup.html
+│   └── popup.js           DOM extraction via chrome.scripting (no content script)
+├── config/
+│   └── settings.json      ICP, scoring weights, product (editable, no code)
+├── models/                GGUF model (gitignored)
+├── dl.py                  model downloader
+├── requirements.txt
+└── README.md
 ```
 
 ---
 
 ## Implementation Notes
 
-- **Local inference only.** No external LLM APIs are used anywhere — the constraint is honored end-to-end.
+- **Local inference only.** No external LLM APIs are used anywhere — the constraint is honored end-to-end. All inference goes through `services/llm.py`, which instantiates a single local `Llama` GGUF object and makes no network/API calls — grep the `services/` directory for `openai`, `anthropic`, `groq`, or a `requests.post` to an LLM endpoint and you'll find none.
 - **`notion-client` pinned to 2.2.1.** Version 3.x migrated to a data-source API incompatible with the classic database calls used here; 2.2.1 resolves database IDs correctly.
 - **Python 3.11** is required — `llama-cpp-python` prebuilt wheels are most reliable there.
 - **Secrets** live in `.env` (gitignored); the model and database files are gitignored as well.
